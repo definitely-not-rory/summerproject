@@ -1,3 +1,4 @@
+#Imported Modules
 import numpy as np
 import os
 import sys
@@ -6,4 +7,4 @@ import astropy.units as units
 from matplotlib import pyplot as plt
 import importlib
 
-os.chdir('/cosma/home/durham/dc-coll7/summerproject')
+os.chdir('/cosma/home/durham/dc-coll7/summerproject') #Forces notebook to operate in it's own directory so it can load other local .py files
