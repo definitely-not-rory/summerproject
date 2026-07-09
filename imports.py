@@ -6,5 +6,6 @@ from scipy import stats as stats
 import astropy.units as units
 from matplotlib import pyplot as plt
 import importlib
+import KapteynClustering as kc
 
 os.chdir('/cosma/home/durham/dc-coll7/summerproject') #Forces notebook to operate in it's own directory so it can load other local .py files
