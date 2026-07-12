@@ -41,7 +41,7 @@ def generate_yaml_file(filename, base_data, result_folder, potential, run_name,
                 else:
                     print('\nOverwriting %s.yaml' % filename)
 
-    full_path='%s\\%s.yaml' % (path,filename) #Generate full file path for saving final .yaml file.
+    full_path='%s/%s.yaml' % (path,filename) #Generate full file path for saving final .yaml file.
 
     steps=['artificial_vtoomre_sim','linkage','significance','clusters','cluster_fits', 'cluster_dendogram'] #Default lists of steps and parameters used in clustering.
     features=['En','Lperp','Lz']
