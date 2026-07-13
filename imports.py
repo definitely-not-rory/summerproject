@@ -9,5 +9,8 @@ import importlib
 import KapteynClustering as kc
 import vaex, vaex.ml, vaex.ml.cluster
 import cmasher as cml
+import yaml
+import json
+from KapteynClustering.Main import main as kc_main
 
 os.chdir('/cosma/home/durham/dc-coll7/summerproject') #Forces notebook to operate in it's own directory so it can load other local .py files
