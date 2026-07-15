@@ -191,6 +191,13 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     sig_df=vaex.open(f'{results_dir}/{run_name}_SignificantSample.hdf5')    
     single_linkage=np.load(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy')
 
+    if show_chem==True:
+        if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/halo18_8kpc_accreted_ChemistryGroups.hdf5')!=True:
+            print(f'No chemistry data detected for {halo} in {home_dir}, please run clustering.chemistry_grouping().')
+            return
+        else:
+            chem_df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
     unique_labels= np.unique(sig_df.evaluate('label'))
     N_unique=len(unique_labels)
 
@@ -224,9 +231,44 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     clusters_cmap=cmap_data['cmap']
     clusters_norm=cmap_data['norm']
 
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    chemistry_cmap=cmap_data['cmap']
+    chemistry_norm=cmap_data['norm']
+
     for (l,x,y) in zip(leaves,xbase,ybase):
         c = clusters_cmap(clusters_norm(l))
         plt.plot([x,x],[0,0.5],c=c,zorder=10, linewidth=3)
+
+    if show_chem==True:
+        KSgrouped_df=chem_df.filter('KS_groups!=-1').extract()
+
+        unique_KSgroups=np.unique(KSgrouped_df.evaluate('KS_groups'))
+
+        for group in unique_KSgroups:
+            clusters_in_group=np.unique(KSgrouped_df.evaluate('label',selection='KS_groups==%s'%group))
+            
+            min_border=np.min([xbase[leaves.index(cluster)] for cluster in clusters_in_group])-3
+            max_border=np.max([xbase[leaves.index(cluster)] for cluster in clusters_in_group])+3
+
+            if group==14:
+                colour='lightgrey'
+            else:
+                colour=chemistry_cmap(chemistry_norm(group))
+
+            ax.axvline(x=min_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
+            ax.axvline(x=max_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
+            ax.axvspan(min_border,max_border,alpha=0.2,facecolor=colour,zorder=0)
+            lo_y_lim,hi_y_lim=ax.get_ylim()
+            
+            ax.text((min_border+max_border)/2,lo_y_lim+(hi_y_lim-lo_y_lim)*2/3,f'Group {int(group)}',color=colour,ha='center',va='center_baseline',rotation=-90,size=16,zorder=0)
+
+        
+
+
+                    
+
 
     plt.ylabel(r'$\rm Mahalanobis \; distance$', fontsize=15)
     plt.xlabel('cluster',size=15)
