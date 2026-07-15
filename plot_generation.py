@@ -264,20 +264,19 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
             
             ax.text((min_border+max_border)/2,lo_y_lim+(hi_y_lim-lo_y_lim)*2/3,f'Group {int(group)}',color=colour,ha='center',va='center_baseline',rotation=-90,size=16,zorder=0)
 
-        
-
-
-                    
-
-
     plt.ylabel(r'$\rm Mahalanobis \; distance$', fontsize=15)
     plt.xlabel('cluster',size=15)
 
     if dcut==None:
-        plt.savefig(f'{save_path}/uncut.pdf')
+        filename='uncut'
     else:
         ax.axhline(y=dcut, c='grey', lw=1, linestyle='dashed')
-        plt.savefig(f'{save_path}/cutoff_{dcut}.pdf')
+        filename=f'cutoff_{dcut}'
+    
+    if show_chem==True:
+        filename+='_chem'
+
+    plt.savefig(f'{save_path}/{filename}.pdf')
 
 def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis',p_threshold=0.05):
     lsr_defs=['8kpc','scalelength']
