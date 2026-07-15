@@ -351,19 +351,23 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     labels = df.evaluate('label')
 
-    unique_chem_labels = np.sort(np.unique(labels[labels>-1]))
-    N_unique_chem=len(unique_chem_labels)
+    sorted_unique_labels = np.sort(unique_labels)
     
-    for cluster in range(len(unique_chem_labels)):
-        KS_groups[labels==unique_chem_labels[cluster]]=relabelled_chemical_groups[cluster]
+    for cluster in range(len(sorted_unique_labels)):
+        KS_groups[labels==sorted_unique_labels[cluster]]=relabelled_chemical_groups[cluster]
 
     df['KS_groups']=np.array(KS_groups)
-
+    
     df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
 
-    cmap=plt.get_cmap('gist_ncar',N_unique_chem)
+    KS_df = df.filter('KS_groups!=-1').extract()
+    
+    unique_chem_labels = np.unique(KS_df.evaluate('KS_groups'))
+    N_unique_chem=len(unique_chem_labels)
+    
+    chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem)
 
-    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[cmap(i) for i in range(cmap.N)],extend='max')
+    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in range(chem_cmap.N)],extend='max')
 
     with open(f'{results_dir}/plotting/chemistry_cmap.pkl','wb') as f:
         pickle.dump({'cmap':chemistry_cmap,'norm':chemistry_norm},f)

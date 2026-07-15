@@ -164,7 +164,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
 
     
 
-def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',distance_metric='mahalanobis',dcut=3.2):
+def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',distance_metric='mahalanobis',dcut=3.2,show_chem=False):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -237,7 +237,7 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
         ax.axhline(y=dcut, c='grey', lw=1, linestyle='dashed')
         plt.savefig(f'{save_path}/cutoff_{dcut}.pdf')
 
-def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis'):
+def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis',p_threshold=0.05):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -279,8 +279,126 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     to_load={'feh':'Fe_H','Lz':'Lz/10e2','En':'En/10e4','prog':'prog'}
 
     if selection!=None:
-        grouping=selection.split('=')[0]
-        group_label=selection.split('=')[1]
+        if '=' in selection:
+            grouping=selection.split('=')[0]
+            group_label=int(selection.split('=')[1])
+        else:
+            grouping=selection
+        
+        groupings=['group','KS_group','cluster','failed']
+
+        if grouping not in groupings:
+            print('\nChosen sub-selection of data is not available, please select from dendrogram: \'group\', KS Test: \'KS_group\', raw clusters: \'cluster\', or failed tests \'failed\'.')
+            return
+
+        if grouping=='cluster':
+            req_tests=[]
+            
+            for test in KStests_data:
+                test_data=KStests_data[test]
+                
+                if group_label in test_data['labels1'] or group_label in test_data['labels2']:
+                    req_tests.append(test)
+        
+        elif grouping=='group':
+            req_tests=[]
+
+            clusters_in_group=np.unique(df.evaluate('label',selection='groups==%s'%group_label))
+            
+            for test in KStests_data:
+                test_data=KStests_data[test]
+                for cluster in clusters_in_group:
+                    if cluster in test_data['labels1'] or group_label in test_data['labels2']:
+                        if test not in req_tests:
+                            req_tests.append(test)
+        
+        elif grouping=='KS_group':
+            req_tests=[]
+
+            clusters_in_group=np.unique(df.evaluate('label',selection='KS_groups==%s'%group_label))
+            
+            for test in KStests_data:
+                test_data=KStests_data[test]
+                for cluster in clusters_in_group:
+                    if cluster in test_data['labels1'] or group_label in test_data['labels2']:
+                        if test not in req_tests:
+                            req_tests.append(test)
+        
+        elif grouping=='failed':
+            req_tests=[]
+
+            for test in KStests_data:
+                test_data=KStests_data[test]
+
+                if test_data['pval']<p_threshold:
+                    req_tests.append(test)
+
+        for test in req_tests:
+            test_data=KStests_data[test]
+
+            cluster1=test_data['cluster1']
+            cluster2=test_data['cluster2']
+
+            labels1=test_data['labels1']
+            labels2=test_data['labels2']
+
+            KS=test_data['KS']
+            pval=test_data['pval']
+            stat_loc=test_data['stat_loc']
+
+            cluster1_data={data: df[to_load[data]].values[np.isin(df.evaluate('label'),labels1)] for data in to_load}
+            cluster2_data={data: df[to_load[data]].values[np.isin(df.evaluate('label'),labels2)] for data in to_load}
+
+            for data in [cluster1_data,cluster2_data]:
+                data['feh']=data['feh'][~np.isnan(data['feh'])]
+
+            mcp1 = stats.mode(np.array(cluster1_data['prog']), keepdims=True).mode[0]
+            mcp2 = stats.mode(np.array(cluster2_data['prog']), keepdims=True).mode[0]
+            
+            fraction1 = np.sum(np.array(cluster1_data['prog']) == mcp1)/len(cluster1_data['prog'])
+            fraction2 = np.sum(np.array(cluster2_data['prog']) == cluster2_data['prog']) / len(cluster2_data['prog'])
+            
+            cluster1_data['colour'] = clusters_cmap(clusters_norm(cluster1)) if cluster1 <= max_original_clusters else 'b'
+            cluster2_data['colour'] = clusters_cmap(clusters_norm(cluster2)) if cluster2 <= max_original_clusters else 'r'
+            
+            fig, axs = plt.subplots(1,3, figsize=[20,5])
+            
+            plt.sca(axs[0]) 
+            
+            df.scatter('Lz/10e2','En/10e4',s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000,label='_None')
+            plt.scatter(cluster1_data['Lz'],cluster1_data['En'], s=2, color=cluster1_data['colour'], alpha=0.6,label='Cluster %s'%cluster1)
+            plt.scatter(cluster2_data['Lz'],cluster2_data['En'], s=2, color=cluster2_data['colour'], alpha=0.6,label='Cluster %s'%cluster2)
+            plt.legend()
+            
+            plt.sca(axs[1]) 
+            
+            plt.hist(cluster1_data['feh'],bins=np.arange(-3,1,0.1),histtype='step',color=cluster1_data['colour'],density=True,linestyle='-',label='Clusters %s, N = %s'%(labels1,len(cluster1_data['feh'])))
+            plt.plot(np.sort(cluster1_data['feh']),np.linspace(0,1.,len(cluster1_data['feh'])),linestyle='-',color=cluster1_data['colour'])
+        
+            plt.hist(cluster2_data['feh'],bins=np.arange(-3,1,0.1),histtype='step',color=cluster2_data['colour'],density=True,linestyle='--',label='Clusters %s, N = %s'%(labels2,len(cluster2_data['feh'])))
+            plt.plot(np.sort(cluster2_data['feh']),np.linspace(0,1.,len(cluster2_data['feh'])),linestyle='--',color=cluster2_data['colour'])
+            
+            plt.vlines(stat_loc,0,1.2,linestyle=':')
+            plt.legend()
+
+            if pval<0.05:
+                plt.title('Test %s - KS: %s, pval: %s'%(test[4:],np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'red', fontweight='bold')
+            elif KS==-9999:
+                plt.title('Test %s - KS: %s, pval: %s'%(test[4:],np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'b', fontweight='bold')
+            else:
+                plt.title('Test %s - KS: %s, pval: %s'%(test[4:],np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'green', fontweight='bold')
+            plt.xlabel('feh')
+            plt.xlim(-3,1)
+            plt.ylabel('N')
+
+            plt.sca(axs[2])
+    
+            plt.hist(cluster1_data['prog'],bins=np.arange(-2,20,1),histtype='step',color=cluster1_data['colour'],density=True,linestyle='-',label = f'MCP = {mcp1}, Fraction = {fraction1:.2f}')
+            plt.hist(cluster2_data['prog'],bins=np.arange(-2,20,1),histtype='step',color=cluster2_data['colour'],density=True,linestyle='--',label = f'MCP = {mcp2}, Fraction = {fraction2:.2f}')
+            plt.legend()
+
+            plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.pdf')
+            plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.png',dpi=250,bbox_inches='tight')    
     else:
         for test in KStests_data:
             test_data=KStests_data[test]
@@ -331,11 +449,11 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             plt.legend()
 
             if pval<0.05:
-                plt.title('KS: %s, pval: %s'%(np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'red', fontweight='bold')
+                plt.title('Test %s - KS: %s, pval: %s'%(test,np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'red', fontweight='bold')
             elif KS==-9999:
-                plt.title('KS: %s, pval: %s'%(np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'b', fontweight='bold')
+                plt.title('Test %s - KS: %s, pval: %s'%(test,np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'b', fontweight='bold')
             else:
-                plt.title('KS: %s, pval: %s'%(np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'green', fontweight='bold')
+                plt.title('Test %s - KS: %s, pval: %s'%(test,np.round(KS,2),np.round(pval,3)),fontsize=15, color= 'green', fontweight='bold')
             plt.xlabel('feh')
             plt.xlim(-3,1)
             plt.ylabel('N')
@@ -347,10 +465,200 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             plt.legend()
 
             plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.pdf')
-            plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.png',dpi=250,bbox_inches='tight')
-                
+            plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.png',dpi=250,bbox_inches='tight')    
+
+def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',show_clusters=True):
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, please run clustering.cluster().')
+        return
+    else:
+        print(f'{halo} clustering data located.')
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/clusters/'
+    
+    group_types=['cluster','group','KS_group']
+
+    if group not in group_types:
+        print('Please select a valid group type:\n - cluster\n - group\n - KS_group')
+        return
+    
+    save_path+=group+'s'
+
+    if group!='cluster':
+        if show_clusters==True:
+            save_path+='/clusters'
+        else:
+            save_path+='/groups'
+    
+    os.makedirs(save_path,exist_ok=True)
+
+    x_axes = ['Lz/10e2', 'Lz/10e2', 'Lperp/10e2', 'vx', 'vx', 'vz']
+    y_axes = ['En/10e4', 'Lperp/10e2','En/10e4', 'vy', 'vz', 'vy']
+
+    xlabels = ['$L_z$ [$10^3$ kpc km/s]', '$L_z$ [$10^3$ kpc km/s]', '$L_{\perp}$ [$10^3$ kpc km/s]','$v_x$ [km/s]', '$v_x$ [km/s]', '$v_{z}$ [km/s]']
+    ylabels = ['$E$ [$10^5$ km$^2$/s$^2$]', '$L_{\perp}$ [$10^3$ kpc km/s]','$E$ [$10^5$ km$^2$/s$^2$]', '$v_{y}$ [km/s]', '$v_z$ [km/s]', '$v_{y}$ [km/s]']
+
+    df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    clusters_cmap=cmap_data['cmap']
+    clusters_norm=cmap_data['norm']
+
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    chemistry_cmap=cmap_data['cmap']
+    chemistry_norm=cmap_data['norm']
+
+    if group=='cluster':
+        unique_clusters=np.unique(df.evaluate('label'))[1:]
+
+        if num not in unique_clusters:
+            print('Cluster number not available.')
+            return
+
+        clusters_df=df.filter('label==%s'%num).extract()
+    
+        fig, ax = plt.subplots(2,3,figsize=[15,10])
+        plt.tight_layout()
+
+        for i in range(6):
+            plt.sca(ax[int(i/3),i%3])
             
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+            clusters_df.scatter(x_axes[i], y_axes[i], s=1, c=clusters_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
+
+            if int(i/3)<1:
+                alpha_shape = alphashape.alphashape(list(zip(clusters_df.evaluate(x_axes[i]), clusters_df.evaluate(y_axes[i]))), alpha=0.2)
+                ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=clusters_cmap(num),linewidth=1.5,ls='dashed'))
+
+            plt.xlabel(xlabels[i])
+            plt.ylabel(ylabels[i])
+
+            plt.tight_layout(w_pad=1)
+    
+    elif group=='group':
+        grouped_df=df.filter('groups!=-1').extract()
+
+        unique_groups=np.unique(grouped_df.evaluate('groups'))
+
+        if num not in unique_groups:
+            print('Group number not available.')
+            return
+        
+        if show_clusters==False:
+            selected_df=df.filter('groups==%s'%num).extract()
+
+            colour_list=selected_df.evaluate('colours').to_pylist()
+
+            fig, ax = plt.subplots(2,3,figsize=[15,10])
+            plt.tight_layout()
+
+            for i in range(6):
+                plt.sca(ax[int(i/3),i%3])
+                
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                selected_df.scatter(x_axes[i], y_axes[i], s=1,c=colour_list, alpha=0.4,length_check=False)
+
+                if int(i/3)<1:
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=colour_list[0],linewidth=1.5,ls='dashed'))
+
+                plt.xlabel(xlabels[i])
+                plt.ylabel(ylabels[i])
+
+                plt.tight_layout(w_pad=1)
+        else:
+            selected_df=df.filter('groups==%s'%num).extract()
+
+            colour_list=selected_df.evaluate('colours').to_pylist()
+
+            fig, ax = plt.subplots(2,3,figsize=[15,10])
+            plt.tight_layout()
+
+            for i in range(6):
+                plt.sca(ax[int(i/3),i%3])
+                
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
+                
+                if int(i/3)<1:
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=colour_list[0],linewidth=1.5,ls='dashed'))
+
+                plt.xlabel(xlabels[i])
+                plt.ylabel(ylabels[i])
+
+                plt.tight_layout(w_pad=1)
+    
+    elif group=='KS_group':
+        KSgrouped_df=df.filter('KS_groups!=-1').extract()
+
+        unique_KSgroups=np.unique(KSgrouped_df.evaluate('KS_groups'))
+
+        if num not in unique_KSgroups:
+            print('Group number not available.')
+            return
+        
+        if show_clusters==False:
+            selected_df=df.filter('KS_groups==%s'%num).extract()
+
+            fig, ax = plt.subplots(2,3,figsize=[15,10])
+            plt.tight_layout()
+
+            for i in range(6):
+                plt.sca(ax[int(i/3),i%3])
+                
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                selected_df.scatter(x_axes[i], y_axes[i], s=2, c=selected_df.evaluate('KS_groups'),cmap=chemistry_cmap, norm=chemistry_norm, alpha=0.4,length_check=False)
+
+                if int(i/3)<1:
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=chemistry_cmap(num),linewidth=1.5,ls='dashed'))
+
+                plt.xlabel(xlabels[i])
+                plt.ylabel(ylabels[i])
+
+                plt.tight_layout(w_pad=1)
+        else:
+            selected_df=df.filter('KS_groups==%s'%num).extract()
+
+            fig, ax = plt.subplots(2,3,figsize=[15,10])
+            plt.tight_layout()
+
+            for i in range(6):
+                plt.sca(ax[int(i/3),i%3])
+                
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
+                
+                if int(i/3)<1:
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=chemistry_cmap(num),linewidth=1.5,ls='dashed'))
+
+                plt.xlabel(xlabels[i])
+                plt.ylabel(ylabels[i])
+
+                plt.tight_layout(w_pad=1)
+
+    plt.savefig(f'{save_path}/{group}_{num}.pdf')
+    plt.savefig(f'{save_path}/{group}_{num}.png',dpi=250,bbox_inches='tight')
 
 
-    
-    
+

@@ -15,6 +15,7 @@ import pickle
 from numba import jit
 import seaborn as sns
 import itertools
+import alphashape
 
 from scipy.cluster.hierarchy import linkage
 from scipy.cluster.hierarchy import dendrogram
