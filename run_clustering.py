@@ -1,5 +1,6 @@
 from imports import *
 import aux_functions as calc
+import plot_generation as plot
 
 #Function that generates the .yaml file to use Run_Script.py for a given clustering run
 def generate_yaml_file(filename, base_data, result_folder, potential, run_name, sample, 
@@ -24,11 +25,11 @@ def generate_yaml_file(filename, base_data, result_folder, potential, run_name, 
             print('Alternative path selected: %s' % path)
     else:
         if os.path.isdir(path)!=True: #If default directory selected, detect if it exists.
-            print('Local YAML file directory does not exist. Creating \'yaml_files\' directory for storage.')
+            print('\nLocal YAML file directory does not exist. Creating \'yaml_files\' directory for storage.')
             os.mkdir(path) #Create 'yaml_files' directory if it does not exist locally.
-            print('Local YAML directory \'yaml_files\' created.')
+            print('\nLocal YAML directory \'yaml_files\' created.')
         else:
-            print('Local YAML file directory detected.')
+            print('\nLocal YAML file directory detected.')
         
     current_files=[file for file in os.listdir(path) if file[-5:]=='.yaml'] #Read all existing .yaml files stored in specified directory.
 
@@ -159,5 +160,215 @@ def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-co
 
     generate_yaml_file(run_name,run_data['base_data'],'results',run_data['potential'],run_name,run_data['sample'],data_path=run_dir,save_path=run_dir,vtoomre=vtoomre,find_iom_scales=iom_scaling,**yaml_params)
     
-    #kc_main(f'yaml_files/{run_name}.yaml')
+    kc_main(f'yaml_files/{run_name}.yaml')
+
+def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,p_threshold=0.05):
+
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, generating with default parameters.')
+        cluster(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir)
+    else:
+        print(f'{halo} clustering data located.')
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    df=vaex.open(f'{results_dir}/{run_name}_LabelledSample.hdf5')
+
+    with open (f'{home_dir}/iom_scales/{run_name}_sample.json', 'r') as f:
+        iom_scales = json.load(f)
+        f.close()
+
+    features=[feature for feature in iom_scales]
+    scaled_features=[f'scaled_{feature}' for feature in features]
+
+    minmax_values=vaex.from_arrays(**iom_scales)
+    
+    scaler=vaex.ml.MinMaxScaler(feature_range=[-1,1],features=features,prefix='scaled_')
+    scaler.fit(minmax_values)
+    df=scaler.transform(df)
+
+    sig_df = df.filter('label!=-1').extract()
+
+    sig_df.export(f'{results_dir}/{run_name}_SignificantSample.hdf5')
+    
+    unique_labels= np.unique(sig_df.evaluate('label'))
+    N_unique=len(unique_labels)
+
+    cmap=plt.get_cmap('gist_ncar',N_unique)
+
+    clusters_cmap, clusters_norm = colors.from_levels_and_colors(unique_labels,[cmap(i) for i in range(cmap.N)],extend='max')
+
+    os.makedirs(f'{results_dir}/plotting',exist_ok=True)
+
+    with open(f'{results_dir}/plotting/clusters_cmap.pkl','wb') as f:
+        pickle.dump({'cmap':clusters_cmap,'norm':clusters_norm},f)
+
+    if 'raw' in plots and plots['raw'] == True:
+        plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='raw')
+    
+    distance_matrix=calc.cluster_distance_matrix(sig_df,halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric)
+
+    single_linkage=linkage(distance_matrix, 'single')
+    np.save(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy',single_linkage)
+
+    if 'cluster_dendrogram' in plots and plots['cluster_dendrogram']==True:
+        plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut)
+
+    if os.path.exists(f'{results_dir}/{run_name}_Leaves.npy') !=True or os.path.exists(f'{results_dir}/plotting/leaf_colours.npy')!=True:
+        plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut)
+
+    grouped_clusters=fcluster(single_linkage,dcut,criterion='distance')
+
+    leaves=np.load(f'{results_dir}/{run_name}_Leaves.npy')
+    leaf_colours=np.load(f'{results_dir}/plotting/leaf_colours.npy')
+    
+    cluster_mapping = {i: cluster for i, cluster in enumerate(grouped_clusters)}
+    
+    groups=np.array([cluster_mapping[leaf] for leaf in leaves])
+    
+    unique_groups=np.unique(groups)
+    group_ids=np.ones(df.count())*-1
+    colour_ids = np.empty(df.count(),dtype=object)
+
+    for i in range(len(leaves)):
+        leaf_index = np.where(df.evaluate('label')== int(leaves[i])) 
+        group_ids[leaf_index] = int(groups[i])
+        colour_ids[leaf_index] =leaf_colours[i]
+    
+    df['groups'] = group_ids
+    df['colours'] = colour_ids
+
+    df.export(f'{results_dir}/{run_name}_GroupedSample.hdf5')
+
+    if 'groups' in plots and plots['groups'] == True:
+        plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='groups')
+    
+    clusters_per_group=np.array([len(np.unique(df.evaluate('label',selection='groups==%s' % group))) for group in unique_groups])
+    
+    sorted_indexes=np.flip(np.argsort(clusters_per_group))
+    sorted_groups=unique_groups[sorted_indexes]
+    sorted_clusters_per_group=clusters_per_group[sorted_indexes]
+
+    N_original_clusters=len(single_linkage)+1
+    max_original_clusters=len(single_linkage)
+
+    clusters={i: [i] for i in range(N_original_clusters)}
+
+    KStest_data={}
+    test_index=1
+
+    stopped_branches=set()
+
+    cluster_index=N_original_clusters
+
+    for i, (cluster1,cluster2,dist,size) in enumerate(single_linkage):
+        
+        cluster1,cluster2=int(cluster1),int(cluster2)
+        new_index=cluster_index
+
+        if cluster1 in stopped_branches or cluster2 in stopped_branches:
+            stopped_branches.add(new_index)
+            cluster_index+=1
+            continue
+        
+        labels1=clusters[cluster1]
+        labels2=clusters[cluster2]   
+
+        feh1 = df['Fe_H'].values[np.isin(df.evaluate('label'),labels1)]
+        feh1 = feh1[~np.isnan(feh1)]
+        
+        feh2 = df['Fe_H'].values[np.isin(df.evaluate('label'),labels2)]
+        feh2 = feh2[~np.isnan(feh2)]
+
+        if (len(feh1)>5)&(len(feh2)>5): 
+            if (len(feh1)<20)|(len(feh2)<20): 
+                orig_pval, comp_percentage, less_percentage=calc.small_num_KS(feh1,feh2,20,NMC=100)
+                if (orig_pval < 0.05) & (comp_percentage>80): 
+                    KS =-9999
+                    pval = -999
+                else: 
+                    res= stats.ks_2samp(feh1, feh2, mode='auto')
+                    KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign')
+            
+            else:    
+                res= stats.ks_2samp(feh1, feh2, mode='auto')
+                KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign')
+        else: 
+            KS =-9999 
+            pval = 9999
+
+        KStest_data[f'test{test_index}']={'cluster1':cluster1,'cluster2':cluster2,'labels1':labels1,'labels2':labels2,'KS':KS,'pval':pval,'stat_loc':statistic_location}
+        test_index+=1
+
+        if KS == -9999:
+            if (len(feh1) < 5)|(len(feh1)<20):
+                clusters[new_index] = clusters[cluster2]
+            elif (len(feh2) < 5)|(len(feh2)<20):
+                clusters[new_index] = clusters[cluster1]
+    
+            cluster_index=cluster_index+1
+            continue  
+
+        if pval < p_threshold:
+            stopped_branches.add(new_index)
+            cluster_index=cluster_index+1
+            continue 
+
+        clusters[new_index] = clusters[cluster1] + clusters[cluster2]
+        cluster_index=cluster_index+1
+
+    original_clusters=np.arange(0,len(single_linkage)+1,1)
+    chemical_groups=original_clusters.copy()
+
+    for cluster in original_clusters:
+        for index, step in enumerate(dict(reversed(list(clusters.items())))):
+            for f in clusters[step]: 
+                if cluster == f: 
+                    chemical_groups[cluster] = index
+                    break
+            if cluster==f:
+                break
+    
+    unique_chemical_groups=np.unique(chemical_groups)
+    N_unique_chemgroups=len(unique_chemical_groups)
+
+    label_mapping = {old: new for new, old in enumerate(unique_chemical_groups, start=0)}
+    relabelled_chemical_groups = np.array([label_mapping[label] for label in chemical_groups])
+
+    KS_groups=np.zeros(df.count())+-1.0
+
+    labels = df.evaluate('label')
+
+    unique_chem_labels = np.sort(np.unique(labels[labels>-1]))
+    N_unique_chem=len(unique_chem_labels)
+    
+    for cluster in range(len(unique_chem_labels)):
+        KS_groups[labels==unique_chem_labels[cluster]]=relabelled_chemical_groups[cluster]
+
+    df['KS_groups']=np.array(KS_groups)
+
+    df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    cmap=plt.get_cmap('gist_ncar',N_unique_chem)
+
+    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[cmap(i) for i in range(cmap.N)],extend='max')
+
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','wb') as f:
+        pickle.dump({'cmap':chemistry_cmap,'norm':chemistry_norm},f)
+
+    with open (f'{results_dir}/{run_name}_KSTests.json', 'w') as f:
+        json.dump(KStest_data,f)
+        f.close()
     
