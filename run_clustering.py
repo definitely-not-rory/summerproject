@@ -196,7 +196,7 @@ def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-co
     kc_main(f'yaml_files/{run_name}.yaml') #Runs clustering algorithm for requested dataset using selected .yaml file.
 
 #Function that groups individual clusters from clustering algorithm by both Mahalanobis distance, and chemistry via 2 sample KS tests.
-def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,p_threshold=0.05):
+def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,regen_dist_matrix=False,p_threshold=0.05):
 
     lsr_defs=['8kpc','scalelength'] #Labels of permitted definitions of Local Solar Neighbourhood ('8kpc' -> proper radial distance from galactic centre, 'scalelength' -> distance that scales based on properties of individual halo).
 
@@ -252,7 +252,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     if 'raw' in plots and plots['raw'] == True: #Plots raw IOM cluster plot if requested.
         plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='raw')
     
-    distance_matrix=calc.cluster_distance_matrix(sig_df,halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric) #Generates, if requested, distance matrix using chosen distance metric (Euclidean or Mahalanobis) for dataset.
+    distance_matrix=calc.cluster_distance_matrix(sig_df,halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,regen=regen_dist_matrix) #Generates, if requested, distance matrix using chosen distance metric (Euclidean or Mahalanobis) for dataset.
 
     single_linkage=linkage(distance_matrix, 'single') #Runs single linkage on resulting clusters from single linkage.
     np.save(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy',single_linkage) #Saves single linkage output as external .npy file.
@@ -408,3 +408,9 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     with open (f'{results_dir}/{run_name}_KSTests.json', 'w') as f: #Exports all KS test data to external .json file.
         json.dump(KStest_data,f)
         f.close()
+
+    if 'KS_groups' in plots and plots['KS_groups'] == True: #Plots chemically-grouped IOM cluster plot if requested.
+        plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='chemistry')
+
+    if 'chem_dendrogram' in plots and plots['chem_dendrogram'] == True: #Plots chemically-grouped dendrogram if requested.
+        plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut, show_chem=True)
