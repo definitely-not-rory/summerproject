@@ -195,218 +195,216 @@ def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-co
  
     kc_main(f'yaml_files/{run_name}.yaml') #Runs clustering algorithm for requested dataset using selected .yaml file.
 
-
+#Function that groups individual clusters from clustering algorithm by both Mahalanobis distance, and chemistry via 2 sample KS tests.
 def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,p_threshold=0.05):
 
-    lsr_defs=['8kpc','scalelength']
+    lsr_defs=['8kpc','scalelength'] #Labels of permitted definitions of Local Solar Neighbourhood ('8kpc' -> proper radial distance from galactic centre, 'scalelength' -> distance that scales based on properties of individual halo).
 
     if lsr_def not in lsr_defs:
-        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'') #Ensure selected Local Solar Neighbourhood is valid.
         return
 
-    if vtoomre==False:
+    if vtoomre==False: #Allocates relevant label to particle subselection method ('accreted' -> particles tagged as accreted by AURIGA, 'vtoomre' -> selection over all particles using Toomre velocity threshold).
         selection_type='accreted'
     else:
         selection_type='vtoomre'
 
-    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True: #Checks if clustering algorithm has been run on selected dataset.
         print(f'No clustering data detected for {halo} in {home_dir}, generating with default parameters.')
-
+        return
     else:
         print(f'{halo} clustering data located.')
 
-    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results' #Initialises quick access strings for clustering run label and file paths.
     run_name=f'{halo}_{lsr_def}_{selection_type}'
 
-    df=vaex.open(f'{results_dir}/{run_name}_LabelledSample.hdf5')
+    df=vaex.open(f'{results_dir}/{run_name}_LabelledSample.hdf5') #Loads clustered data set from .hdf5 file.
 
-    with open (f'{home_dir}/iom_scales/{run_name}_sample.json', 'r') as f:
+    with open (f'{home_dir}/iom_scales/{run_name}_sample.json', 'r') as f: #Loads generated IOM scales from external .json file.
         iom_scales = json.load(f)
         f.close()
 
-    features=[feature for feature in iom_scales]
+    features=[feature for feature in iom_scales] #Initialises arrays for each IOM feature and their scaled equivalents.
     scaled_features=[f'scaled_{feature}' for feature in features]
 
-    minmax_values=vaex.from_arrays(**iom_scales)
+    minmax_values=vaex.from_arrays(**iom_scales) #Generates vaex DataFrame of minimum and maximum extents of each IOM feature for scaling.
     
-    scaler=vaex.ml.MinMaxScaler(feature_range=[-1,1],features=features,prefix='scaled_')
-    scaler.fit(minmax_values)
-    df=scaler.transform(df)
+    scaler=vaex.ml.MinMaxScaler(feature_range=[-1,1],features=features,prefix='scaled_') #Generates 'scaler' object to scale IOM features.
+    scaler.fit(minmax_values) #Calibrates scaler to fit selected IOM scales.
+    df=scaler.transform(df)  #Applies scaling to each IOM feature across whole dataset.
 
-    sig_df = df.filter('label!=-1').extract()
+    sig_df = df.filter('label!=-1').extract() #Subselects all stars in significant clusters.
 
-    sig_df.export(f'{results_dir}/{run_name}_SignificantSample.hdf5')
+    sig_df.export(f'{results_dir}/{run_name}_SignificantSample.hdf5') #Saves significant subselection as external file.
     
-    unique_labels= np.unique(sig_df.evaluate('label'))
-    N_unique=len(unique_labels)
+    unique_labels= np.unique(sig_df.evaluate('label')) #Retrieves all unique significant cluster labels.
+    N_unique=len(unique_labels) #Total number of significant clusters.
 
-    cmap=plt.get_cmap('gist_ncar',N_unique)
+    cmap=plt.get_cmap('gist_ncar',N_unique) #Generates colour map with distinct inidividual colour for each cluster.
 
-    clusters_cmap, clusters_norm = colors.from_levels_and_colors(unique_labels,[cmap(i) for i in range(cmap.N)],extend='max')
+    clusters_cmap, clusters_norm = colors.from_levels_and_colors(unique_labels,[cmap(i) for i in range(cmap.N)],extend='max') #Maps and normalises colour map to unique cluster labels.
 
-    os.makedirs(f'{results_dir}/plotting',exist_ok=True)
+    os.makedirs(f'{results_dir}/plotting',exist_ok=True) #Creates sub-directory for data files associated with plotting (exported colour maps etc.).
 
-    with open(f'{results_dir}/plotting/clusters_cmap.pkl','wb') as f:
+    with open(f'{results_dir}/plotting/clusters_cmap.pkl','wb') as f: #Exports generated unique cluster colour map to external .pkl file.
         pickle.dump({'cmap':clusters_cmap,'norm':clusters_norm},f)
 
-    if 'raw' in plots and plots['raw'] == True:
+    if 'raw' in plots and plots['raw'] == True: #Plots raw IOM cluster plot if requested.
         plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='raw')
     
-    distance_matrix=calc.cluster_distance_matrix(sig_df,halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric)
+    distance_matrix=calc.cluster_distance_matrix(sig_df,halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric) #Generates, if requested, distance matrix using chosen distance metric (Euclidean or Mahalanobis) for dataset.
 
-    single_linkage=linkage(distance_matrix, 'single')
-    np.save(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy',single_linkage)
+    single_linkage=linkage(distance_matrix, 'single') #Runs single linkage on resulting clusters from single linkage.
+    np.save(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy',single_linkage) #Saves single linkage output as external .npy file.
 
-    if 'cluster_dendrogram' in plots and plots['cluster_dendrogram']==True:
+    if 'cluster_dendrogram' in plots and plots['cluster_dendrogram']==True: #Plots grouped dendrogram if requested.
         plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut)
 
-    if os.path.exists(f'{results_dir}/{run_name}_Leaves.npy') !=True or os.path.exists(f'{results_dir}/plotting/leaf_colours.npy')!=True:
+    if os.path.exists(f'{results_dir}/{run_name}_Leaves.npy') !=True or os.path.exists(f'{results_dir}/plotting/leaf_colours.npy')!=True: #Generates (via plotting) necessary dendrogram data if not currently present.
         plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut)
 
-    grouped_clusters=fcluster(single_linkage,dcut,criterion='distance')
+    grouped_clusters=fcluster(single_linkage,dcut,criterion='distance') #Separates single-linked clusters into groups using requested cutoff distance threshold.
 
-    leaves=np.load(f'{results_dir}/{run_name}_Leaves.npy')
+    leaves=np.load(f'{results_dir}/{run_name}_Leaves.npy') #Loads dendrogram leaf data and colour values.
     leaf_colours=np.load(f'{results_dir}/plotting/leaf_colours.npy')
     
-    cluster_mapping = {i: cluster for i, cluster in enumerate(grouped_clusters)}
+    cluster_mapping = {i: cluster for i, cluster in enumerate(grouped_clusters)} #Assigns each cluster to a dictionary entry that stores it's allocated group.
     
-    groups=np.array([cluster_mapping[leaf] for leaf in leaves])
+    groups=np.array([cluster_mapping[leaf] for leaf in leaves]) #Assigns each clusters' allocated group to entry in numpy array for all clusters.
     
-    unique_groups=np.unique(groups)
-    group_ids=np.ones(df.count())*-1
-    colour_ids = np.empty(df.count(),dtype=object)
-
+    unique_groups=np.unique(groups) #Retrieves unique list of groups from dendrogram across clusters.
+    group_ids=np.ones(df.count())*-1 #Initialises group labels array such that all stars start as 'ungrouped'.
+    colour_ids = np.empty(df.count(),dtype=object) #Initialises equivalent array to store the allocated colour of each star's dendrogram group.
     for i in range(len(leaves)):
-        leaf_index = np.where(df.evaluate('label')== int(leaves[i])) 
-        group_ids[leaf_index] = int(groups[i])
-        colour_ids[leaf_index] =leaf_colours[i]
+        leaf_index = np.where(df.evaluate('label')== int(leaves[i])) #Finds all stars in a given cluster.
+        group_ids[leaf_index] = int(groups[i]) #Assigns correct dendrogram group ID to all stars in a given gluster.
+        colour_ids[leaf_index] =leaf_colours[i] #Assigns relevant group colour to all stars in a given cluster.
     
-    df['groups'] = group_ids
+    df['groups'] = group_ids #Stores groups and group colours as columns in DataFrame.
     df['colours'] = colour_ids
 
-    df.export(f'{results_dir}/{run_name}_GroupedSample.hdf5')
+    df.export(f'{results_dir}/{run_name}_GroupedSample.hdf5') #Exports updated dataset with dendrogram groups to external .hdf5 file.
 
-    if 'groups' in plots and plots['groups'] == True:
+    if 'groups' in plots and plots['groups'] == True: #Plots dendrogram-grouped IOM plot if requested.
         plot.clusters(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,cluster_by='groups')
     
-    clusters_per_group=np.array([len(np.unique(df.evaluate('label',selection='groups==%s' % group))) for group in unique_groups])
+    clusters_per_group=np.array([len(np.unique(df.evaluate('label',selection='groups==%s' % group))) for group in unique_groups]) #Calculates number of distinct clusters in each dendrogram group.
     
-    sorted_indexes=np.flip(np.argsort(clusters_per_group))
+    sorted_indexes=np.flip(np.argsort(clusters_per_group)) #Sorts groups and clusters per group by number of clusters per group.
     sorted_groups=unique_groups[sorted_indexes]
     sorted_clusters_per_group=clusters_per_group[sorted_indexes]
 
-    N_original_clusters=len(single_linkage)+1
-    max_original_clusters=len(single_linkage)
+    N_original_clusters=len(single_linkage)+1 #Calculates number of original clusters before chemistry KS testing and merging
+    max_original_clusters=len(single_linkage) #Stores index of last original cluster.
 
-    clusters={i: [i] for i in range(N_original_clusters)}
+    clusters={i: [i] for i in range(N_original_clusters)} #Initialises dictionary of unmerged clusters to store which original cluster labels are in a KS-merged cluster.
 
-    KStest_data={}
-    test_index=1
+    KStest_data={} #Initialised dictionary to store necessary KS test data for future exporting.
+    test_index=1 #Tracker index to distinguish KS test when storing data.
 
-    stopped_branches=set()
+    stopped_branches=set() #Initialises empty set of branches that are no longer considered in KS-merging.
 
-    cluster_index=N_original_clusters
+    cluster_index=N_original_clusters #Assigns index of new merged cluster to next available non-original cluster.
 
-    for i, (cluster1,cluster2,dist,size) in enumerate(single_linkage):
+    for i, (cluster1,cluster2,dist,size) in enumerate(single_linkage): #Traverses dendrogram to apply KS tests.
         
-        cluster1,cluster2=int(cluster1),int(cluster2)
-        new_index=cluster_index
+        cluster1,cluster2=int(cluster1),int(cluster2) #Loads clusters to test and index of future merged cluster.
+        new_index=cluster_index 
 
-        if cluster1 in stopped_branches or cluster2 in stopped_branches:
+        if cluster1 in stopped_branches or cluster2 in stopped_branches: #Detects if merging has been stopped for either of selected clusters, and skips step if so.
             stopped_branches.add(new_index)
             cluster_index+=1
             continue
         
-        labels1=clusters[cluster1]
+        labels1=clusters[cluster1] #Retrieves labels of all original clusters in selected test clusters.
         labels2=clusters[cluster2]   
 
-        feh1 = df['feh'].values[np.isin(df.evaluate('label'),labels1)]
+        feh1 = df['feh'].values[np.isin(df.evaluate('label'),labels1)] #Retrieves and cleans metallicity data for selected clusters.
         feh1 = feh1[~np.isnan(feh1)]
         
         feh2 = df['feh'].values[np.isin(df.evaluate('label'),labels2)]
         feh2 = feh2[~np.isnan(feh2)]
 
-        if (len(feh1)>5)&(len(feh2)>5): 
-            if (len(feh1)<20)|(len(feh2)<20): 
-                orig_pval, comp_percentage, less_percentage=calc.small_num_KS(feh1,feh2,20,NMC=100)
-                if (orig_pval < 0.05) & (comp_percentage>80): 
-                    KS =-9999
+        if (len(feh1)>5)&(len(feh2)>5):  #Ensures that there are sufficient stars in each cluster to perform KS test.
+            if (len(feh1)<20)|(len(feh2)<20):  #Detects if small population KS test is necessary.
+                orig_pval, comp_percentage, less_percentage=calc.small_num_KS(feh1,feh2,20,NMC=100) #Completes small populations KS test on data.
+                if (orig_pval < 0.05) & (comp_percentage>80): #Checks for failure case in small population KS test.
+                    KS =-9999 #Assigns failure state variables.
                     pval = -999
-                else: 
+                else:  #Runs full scale KS test on data if small number KS test is successful.
                     res= stats.ks_2samp(feh1, feh2, mode='auto')
-                    KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign')
+                    KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign') #Assigns relevant KS test values to variables.
             
-            else:    
+            else: #Runs full scale KS test on dataset if populations are sufficiently large.   
                 res= stats.ks_2samp(feh1, feh2, mode='auto')
-                KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign')
-        else: 
+                KS, pval,statistic_location, statistic_sign = getattr(res, 'statistic'),getattr(res, 'pvalue'),getattr(res, 'statistic_location'),getattr(res, 'statistic_sign') #Assigns relevant KS test values to variables.
+        else: #Assign failure state variables if there are an insufficient number of stars to perform any KS testing.
             KS =-9999 
             pval = 9999
 
-        KStest_data[f'test{test_index}']={'cluster1':cluster1,'cluster2':cluster2,'labels1':labels1,'labels2':labels2,'KS':float(KS),'pval':float(pval),'stat_loc':float(statistic_location)}
-        test_index+=1
+        KStest_data[f'test{test_index}']={'cluster1':cluster1,'cluster2':cluster2,'labels1':labels1,'labels2':labels2,'KS':float(KS),'pval':float(pval),'stat_loc':float(statistic_location)} #Stores tested clusters and KS values of current test in dictionary entry.
+        test_index+=1 #Iterates to next KS test index.
 
-        if KS == -9999:
-            if (len(feh1) < 5)|(len(feh1)<20):
+        if KS == -9999: #Detects KS test failure state
+            if (len(feh1) < 5)|(len(feh1)<20): #Detects if failure was due to cluster size of either selected cluster and progresses opposite cluster.
                 clusters[new_index] = clusters[cluster2]
             elif (len(feh2) < 5)|(len(feh2)<20):
                 clusters[new_index] = clusters[cluster1]
     
-            cluster_index=cluster_index+1
+            cluster_index=cluster_index+1 #Iterates to next cluster.
             continue  
 
-        if pval < p_threshold:
+        if pval < p_threshold: #Stops merging along cluster branch should KS test fail due to low probability and iterates to next cluster.
             stopped_branches.add(new_index)
             cluster_index=cluster_index+1
             continue 
 
-        clusters[new_index] = clusters[cluster1] + clusters[cluster2]
+        clusters[new_index] = clusters[cluster1] + clusters[cluster2] #Assigns merged cluster to new index if KS test passes.
         cluster_index=cluster_index+1
 
-    original_clusters=np.arange(0,len(single_linkage)+1,1)
-    chemical_groups=original_clusters.copy()
+    original_clusters=np.arange(0,len(single_linkage)+1,1) #Generates list of original cluster labels.
+    chemical_groups=original_clusters.copy() #Initialises chemical group labels based on original cluster labels.
 
-    for cluster in original_clusters:
-        for index, step in enumerate(dict(reversed(list(clusters.items())))):
-            for f in clusters[step]: 
-                if cluster == f: 
+    for cluster in original_clusters: #Iterates over original clusters to assign chemical groups.
+        for index, step in enumerate(dict(reversed(list(clusters.items())))): #Iterates over merged clusters to detect final merged clusters.
+            for f in clusters[step]: #Searches for original cluster in merged clusters.
+                if cluster == f: #Assigns chemical group label to cluster if detected in a given merged cluster.
                     chemical_groups[cluster] = index
                     break
-            if cluster==f:
+            if cluster==f: #Stops loop if an unmerged cluster is detected.
                 break
     
-    unique_chemical_groups=np.unique(chemical_groups)
-    N_unique_chemgroups=len(unique_chemical_groups)
+    unique_chemical_groups=np.unique(chemical_groups) #Generates list of unique chemical groups.
+    N_unique_chemgroups=len(unique_chemical_groups) #Calculates total number of unique chemical groups.
 
-    label_mapping = {old: new for new, old in enumerate(unique_chemical_groups, start=0)}
-    relabelled_chemical_groups = np.array([label_mapping[label] for label in chemical_groups])
+    label_mapping = {old: new for new, old in enumerate(unique_chemical_groups, start=0)} #Assigns reordered labels for each chemical group.
+    relabelled_chemical_groups = np.array([label_mapping[label] for label in chemical_groups]) #Generates array of new reordered chemical group labels for each cluster.
 
-    KS_groups=np.zeros(df.count())+-1.0
+    KS_groups=np.zeros(df.count())+-1.0 #Initialises array of each star's chemical group with stars starting as ungrouped.
 
-    labels = df.evaluate('label')
+    labels = df.evaluate('label') #Loads array of original cluster labels for every star.
 
-    sorted_unique_labels = np.sort(unique_labels)
+    sorted_unique_labels = np.sort(unique_labels) #Generates array of ordered unique cluster labels.
     
-    for cluster in range(len(sorted_unique_labels)):
-        KS_groups[labels==sorted_unique_labels[cluster]]=relabelled_chemical_groups[cluster]
+    for cluster in range(len(sorted_unique_labels)): #Iterates over every original cluster to assign KS groups.
+        KS_groups[labels==sorted_unique_labels[cluster]]=relabelled_chemical_groups[cluster] #Assigns cluster's KS group to all stars in a given original cluster.
 
-    df['KS_groups']=np.array(KS_groups)
+    df['KS_groups']=np.array(KS_groups) #Stores KS groups in DataFrame
     
-    df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+    df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5') #Exports chemistry group data to separate external .hdf5 file.
 
-    KS_df = df.filter('KS_groups!=-1').extract()
+    KS_df = df.filter('KS_groups!=-1').extract() #Generates subsample of all stars assigned to chemical groups.
     
-    unique_chem_labels = np.unique(KS_df.evaluate('KS_groups'))
-    N_unique_chem=len(unique_chem_labels)
+    unique_chem_labels = np.unique(KS_df.evaluate('KS_groups')) #Generates list of unique chemical groups.
+    N_unique_chem=len(unique_chem_labels) #Calculates total number of unique chemical groups.
 
-    chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem)
+    chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem) #Generates colour map with distinct inidividual colour for each chemical group.
 
-    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in range(chem_cmap.N)],extend='max')
+    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in range(chem_cmap.N)],extend='max') #Maps and normalises colour map to unique KS group labels.
 
-    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','wb') as f:
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','wb') as f: #Exports generated unique KS group colour map to external .pkl file.
         pickle.dump({'cmap':chemistry_cmap,'norm':chemistry_norm},f)
 
-    with open (f'{results_dir}/{run_name}_KSTests.json', 'w') as f:
+    with open (f'{results_dir}/{run_name}_KSTests.json', 'w') as f: #Exports all KS test data to external .json file.
         json.dump(KStest_data,f)
         f.close()
-    
