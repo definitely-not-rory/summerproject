@@ -15,6 +15,7 @@ import pickle
 from numba import jit
 import seaborn as sns
 import itertools
+from tqdm import tqdm
 import alphashape
 
 from scipy.cluster.hierarchy import linkage

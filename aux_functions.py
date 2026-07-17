@@ -36,14 +36,14 @@ def get_iom_scales(sample,path='/cosma8/data/dp262/dc-dodd1/',save_dir='/cosma/a
     
     iom_axes=['En','Lperp','Lz']
 
-    scales={iom: [np.floor(np.min(df.min(iom))),np.ceil(np.max(df.max(iom)))] for iom in iom_axes}
+    scales={iom: [int(np.floor(np.min(df.min(iom)))),int(np.ceil(np.max(df.max(iom))))] for iom in iom_axes}
     
     scales['En'][1]=0
     scales['Lperp'][0]=0
     
     Lz_extent=max(np.abs(scales['Lz']))
-    scales['Lz'][0]=-1*Lz_extent
-    scales['Lz'][1]=Lz_extent
+    scales['Lz'][0]=int(-1*Lz_extent)
+    scales['Lz'][1]=int(Lz_extent)
 
     with open (f'{save_dir}/{sample}.json', 'w') as f:
         json.dump(scales,f)
@@ -90,7 +90,7 @@ def cluster_distance_matrix(df,halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosm
 
     counter=0
 
-    for i in range(0,N_unique-1):
+    for i in tqdm(range(0,N_unique-1)):
         for j in range(i+1,N_unique):
             cluster1 = df.filter('label==%s'%unique_labels[i]).extract()
             cluster2 = df.filter('label==%s'%unique_labels[j]).extract()

@@ -107,7 +107,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
         for i in range(6):
             plt.sca(ax[int(i/3),i%3])
             
-            df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
             clusters_df.scatter(x_axes[i], y_axes[i], s=1, c=clusters_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.6,length_check=False)
 
             plt.xlabel(xlabels[i])
@@ -127,7 +127,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
         for i in range(6):
             plt.sca(ax[int(i/3),i%3])
             
-            df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
             groups_only.scatter(x_axes[i], y_axes[i], s=1, c=colour_list, alpha=0.6,length_check=False)
 
             plt.xlabel(xlabels[i])
@@ -151,7 +151,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
         for i in range(6):
             plt.sca(ax[int(i/3),i%3])
             
-            df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
             groups_only.scatter(x_axes[i], y_axes[i], s=2, c=groups_only.evaluate('KS_groups'),cmap=chemistry_cmap, norm=chemistry_norm, alpha=0.6,length_check=False)
 
             plt.xlabel(xlabels[i])
@@ -192,11 +192,18 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     single_linkage=np.load(f'{results_dir}/{run_name}_SingleLinkage_{distance_metric}.npy')
 
     if show_chem==True:
-        if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/halo18_8kpc_accreted_ChemistryGroups.hdf5')!=True:
+        if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/{run_name}_ChemistryGroups.hdf5')!=True:
             print(f'No chemistry data detected for {halo} in {home_dir}, please run clustering.chemistry_grouping().')
             return
         else:
             chem_df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+            with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
+                cmap_data=pickle.load(f)
+
+            chemistry_cmap=cmap_data['cmap']
+            chemistry_norm=cmap_data['norm']
+
 
     unique_labels= np.unique(sig_df.evaluate('label'))
     N_unique=len(unique_labels)
@@ -230,12 +237,6 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     clusters_cmap=cmap_data['cmap']
     clusters_norm=cmap_data['norm']
-
-    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
-        cmap_data=pickle.load(f)
-
-    chemistry_cmap=cmap_data['cmap']
-    chemistry_norm=cmap_data['norm']
 
     for (l,x,y) in zip(leaves,xbase,ybase):
         c = clusters_cmap(clusters_norm(l))
@@ -277,6 +278,7 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
         filename+='_chem'
 
     plt.savefig(f'{save_path}/{filename}.pdf')
+    plt.savefig(f'{save_path}/{filename}.png',dpi=250,bbox_inches='tight')
 
 def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis',p_threshold=0.05):
     lsr_defs=['8kpc','scalelength']
@@ -317,7 +319,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     clusters_cmap=cmap_data['cmap']
     clusters_norm=cmap_data['norm']
 
-    to_load={'feh':'Fe_H','Lz':'Lz/10e2','En':'En/10e4','prog':'prog'}
+    to_load={'feh':'feh','Lz':'Lz/10e2','En':'En/10e4','prog':'progenitor_id'}
 
     if selection!=None:
         if '=' in selection:
@@ -406,7 +408,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             
             plt.sca(axs[0]) 
             
-            df.scatter('Lz/10e2','En/10e4',s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000,label='_None')
+            df.scatter('Lz/10e2','En/10e4',s=0.5, c='silver',alpha=0.7, length_limit=6000000,label='_None')
             plt.scatter(cluster1_data['Lz'],cluster1_data['En'], s=2, color=cluster1_data['colour'], alpha=0.6,label='Cluster %s'%cluster1)
             plt.scatter(cluster2_data['Lz'],cluster2_data['En'], s=2, color=cluster2_data['colour'], alpha=0.6,label='Cluster %s'%cluster2)
             plt.legend()
@@ -473,7 +475,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             
             plt.sca(axs[0]) 
             
-            df.scatter('Lz/10e2','En/10e4',s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000,label='_None')
+            df.scatter('Lz/10e2','En/10e4',s=0.5, c='silver',alpha=0.7, length_limit=6000000,label='_None')
             plt.scatter(cluster1_data['Lz'],cluster1_data['En'], s=2, color=cluster1_data['colour'], alpha=0.6,label='Cluster %s'%cluster1)
             plt.scatter(cluster2_data['Lz'],cluster2_data['En'], s=2, color=cluster2_data['colour'], alpha=0.6,label='Cluster %s'%cluster2)
             plt.legend()
@@ -582,7 +584,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
         for i in range(6):
             plt.sca(ax[int(i/3),i%3])
             
-            df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
             clusters_df.scatter(x_axes[i], y_axes[i], s=1, c=clusters_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
 
             if int(i/3)<1:
@@ -614,7 +616,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
             for i in range(6):
                 plt.sca(ax[int(i/3),i%3])
                 
-                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
                 selected_df.scatter(x_axes[i], y_axes[i], s=1,c=colour_list, alpha=0.4,length_check=False)
 
                 if int(i/3)<1:
@@ -636,7 +638,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
             for i in range(6):
                 plt.sca(ax[int(i/3),i%3])
                 
-                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
                 selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
                 
                 if int(i/3)<1:
@@ -666,7 +668,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
             for i in range(6):
                 plt.sca(ax[int(i/3),i%3])
                 
-                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
                 selected_df.scatter(x_axes[i], y_axes[i], s=2, c=selected_df.evaluate('KS_groups'),cmap=chemistry_cmap, norm=chemistry_norm, alpha=0.4,length_check=False)
 
                 if int(i/3)<1:
@@ -686,7 +688,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
             for i in range(6):
                 plt.sca(ax[int(i/3),i%3])
                 
-                df.scatter(x_axes[i], y_axes[i], s=0.5, c='lightgrey', alpha=0.1, length_limit=6000000)
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
                 selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
                 
                 if int(i/3)<1:
@@ -698,8 +700,13 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
                 plt.tight_layout(w_pad=1)
 
-    plt.savefig(f'{save_path}/{group}_{num}.pdf')
-    plt.savefig(f'{save_path}/{group}_{num}.png',dpi=250,bbox_inches='tight')
+    filename=f'{group}_{num}'
+
+    if show_clusters==True:
+        filename+='_clusters'
+
+    plt.savefig(f'{save_path}/{filename}.pdf')
+    plt.savefig(f'{save_path}/{filename}.png',dpi=250,bbox_inches='tight')
 
 
 

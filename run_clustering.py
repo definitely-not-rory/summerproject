@@ -112,55 +112,89 @@ def generate_yaml_file(filename, base_data, result_folder, potential, run_name, 
         step_index=step_labels.index(to_skip) #Locate requested step.
         yaml_data['run']['steps'].pop(step_index) #Remove step from yaml_data[run][steps] and global comparison lists.
         step_labels.pop(step_index)
-        yaml_data['data'][to_skip]=step_appends[to_skip] #Ammend yaml_data[data] entries to include skipped step's data.
+        yaml_data['data'][to_skip]=step_appends[to_skip] #Amend yaml_data[data] entries to include skipped step's data.
             
     with open (full_path,'w') as yaml_file: #Save data into .yaml file at requested path.
         yaml.dump(yaml_data,yaml_file, default_flow_style=False, sort_keys=False)
 
     print('\n.yaml file saved for %s at %s.' % (run_name, full_path))
 
-def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',iom_scaling=True,yaml_params={}):
+#Function that runs the KapteynClustering algorithm for a specified dataset.
+def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',iom_scaling=True,yaml_params={}): 
     
-    lsr_defs=['8kpc','scalelength']
+    lsr_defs=['8kpc','scalelength'] #Labels of permitted definitions of Local Solar Neighbourhood ('8kpc' -> proper radial distance from galactic centre, 'scalelength' -> distance that scales based on properties of individual halo).
 
-    if os.path.isdir(f'{home_dir}{halo}')!=True:
-        print(f'\nNo directory for {halo} in home directory {home_dir}, creating data structure at {home_dir}{halo}.')
-        os.makedirs(f'{home_dir}{halo}',exist_ok=True)
+    if os.path.isdir(f'{home_dir}{halo}')!=True: #Verifies that data directories for clustering algorithm exist.
+        print(f'\nNo directory for {halo} in home directory {home_dir}, creating data structure at {home_dir}{halo}, please populate with correct data files.')
+        os.makedirs(f'{home_dir}{halo}',exist_ok=True) #Generates halo directory and relevant subdirectories.
         for lsr in lsr_defs:
             os.makedirs(f'{home_dir}{halo}/{lsr}',exist_ok=True)
             os.makedirs(f'{home_dir}{halo}/{lsr}/accreted',exist_ok=True)
             os.makedirs(f'{home_dir}{halo}/{lsr}/vtoomre',exist_ok=True)
+        return
     else:
         print(f'\n{halo} directory located.')
     
     if lsr_def not in lsr_defs:
-        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'') #Ensure selected Local Solar Neighbourhood is valid.
         return
     
-    if vtoomre==False:
+    if vtoomre==False: #Allocates relevant label to particle subselection method ('accreted' -> particles tagged as accreted by AURIGA, 'vtoomre' -> selection over all particles using Toomre velocity threshold).
         selection_type='accreted'
     else:
         selection_type='vtoomre'
 
-    run_name=f'{halo}_{lsr_def}_{selection_type}'
+    run_name=f'{halo}_{lsr_def}_{selection_type}' #Initialises quick access strings for clustering run label and file paths.
     run_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/'
     
-    req_data=['base_data.hdf5','potential.ini','sample.hdf5']
+    req_data=['base_data.hdf5','potential.ini','sample.hdf5'] #Valid suffixes of data files needed to run clustering algorithm.
 
-    check_data_files=[os.path.exists(f'{run_dir}/{run_name}_{data}') for data in req_data]
+    check_data_files=[os.path.exists(f'{run_dir}/{run_name}_{data}') for data in req_data] #Checks if each necessary data file for a given run is present.
 
-    missing_data=[data for data in req_data if check_data_files[req_data.index(data)]!=True]
+    missing_data=[data for data in req_data if check_data_files[req_data.index(data)]!=True] #Generates list of any missing data in chosen sample directory.
 
-    if check_data_files!=[True,True,True]:
-        print(f'\n{halo} data is incomplete, the following files are missing:\n')
+    if check_data_files!=[True,True,True]: #Checks if all three required files are present.
+        print(f'\n{halo} data is incomplete, the following files are missing:\n') #Indicates which, if any, data files are missing.
         print(*[' - '+data for data in missing_data],sep='\n')
         print(f'\n Please move/rename files to haloXX_[LSR]_[SELECTION]_[DATA].hdf5/ini in {home_dir}.')
     
-    run_data={file.split('.')[0]: run_name+'_'+file.split('.')[0] for file in req_data}
+    run_data={file.split('.')[0]: run_name+'_'+file.split('.')[0] for file in req_data} #Dictionary of each type of data file (base_data, sample, potential) and their names.
 
-    generate_yaml_file(run_name,run_data['base_data'],'results',run_data['potential'],run_name,run_data['sample'],data_path=run_dir,save_path=run_dir,vtoomre=vtoomre,find_iom_scales=iom_scaling,**yaml_params)
-    
-    kc_main(f'yaml_files/{run_name}.yaml')
+    for file in ['base_data','sample']: #Verifies all necessary columns are present in each particle data file.
+        df=vaex.open(f'{run_dir}{run_data[file]}.hdf5')
+
+        columns=df.get_column_names() #Accesses all current columns in a given data file.
+        req_cols=['pos','vel','phi','vT','vR','R'] #List of necessary columns for whom who's presence in each file needs verification.
+        missing_cols=[col for col in req_cols if col not in columns] #Generates list of any missing columns in file.
+
+        if 'pos' in missing_cols: #Generates, if necessary, column for Cartesian position as a 3-element array from individual axis component columns.
+            df['pos']=np.column_stack((df.evaluate('x'),df.evaluate('y'),df.evaluate('z')))
+
+        if 'vel' in missing_cols: #Generates, if necessary, column for Cartesian velocity as a 3-element array from individual axis component columns.
+            df['vel']=np.column_stack((df.evaluate('vx'),df.evaluate('vy'),df.evaluate('vz')))
+
+        if 'phi' in missing_cols: #Generates, if necessary required cylindrical coordinates and velocities from Cartesian coordinates.
+            x=df.evaluate('x')
+            y=df.evaluate('y')
+
+            vx=df.evaluate('vx')
+            vy=df.evaluate('vy')
+
+            df['R']=np.sqrt((x*x)+(y*y))
+            df['phi']=np.arctan2(y,x)
+
+            df['vR']=((x*vx)+(y*vy))/df.evaluate('R')
+            df['vT']=-((x*vy)-(y*vx))/df.evaluate('R')
+
+        df.export(f'{run_dir}{run_data[file]}_updated.hdf5') #Exports updated dataset (with added missing columns) to a temporary file.
+        del df #Releases control of the original .hdf5 file so it can be overwritten.
+ 
+        os.replace(f'{run_dir}{run_data[file]}_updated.hdf5', f'{run_dir}{run_data[file]}.hdf5') #Overwrites original .hdf5 with updated version and removes temporary file.
+
+    generate_yaml_file(run_name,run_data['base_data'],'results',run_data['potential'],run_name,run_data['sample'],data_path=run_dir,save_path=run_dir,vtoomre=vtoomre,find_iom_scales=iom_scaling,**yaml_params) #Generates .yaml file for selected dataset using provided directory paths, whether or not to regenerate the IOM scales, and ncludes any additional requested parameters within the YAML file
+ 
+    kc_main(f'yaml_files/{run_name}.yaml') #Runs clustering algorithm for requested dataset using selected .yaml file.
+
 
 def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,p_threshold=0.05):
 
@@ -177,7 +211,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
         print(f'No clustering data detected for {halo} in {home_dir}, generating with default parameters.')
-        cluster(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir)
+
     else:
         print(f'{halo} clustering data located.')
 
@@ -286,10 +320,10 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
         labels1=clusters[cluster1]
         labels2=clusters[cluster2]   
 
-        feh1 = df['Fe_H'].values[np.isin(df.evaluate('label'),labels1)]
+        feh1 = df['feh'].values[np.isin(df.evaluate('label'),labels1)]
         feh1 = feh1[~np.isnan(feh1)]
         
-        feh2 = df['Fe_H'].values[np.isin(df.evaluate('label'),labels2)]
+        feh2 = df['feh'].values[np.isin(df.evaluate('label'),labels2)]
         feh2 = feh2[~np.isnan(feh2)]
 
         if (len(feh1)>5)&(len(feh2)>5): 
@@ -309,7 +343,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
             KS =-9999 
             pval = 9999
 
-        KStest_data[f'test{test_index}']={'cluster1':cluster1,'cluster2':cluster2,'labels1':labels1,'labels2':labels2,'KS':KS,'pval':pval,'stat_loc':statistic_location}
+        KStest_data[f'test{test_index}']={'cluster1':cluster1,'cluster2':cluster2,'labels1':labels1,'labels2':labels2,'KS':float(KS),'pval':float(pval),'stat_loc':float(statistic_location)}
         test_index+=1
 
         if KS == -9999:
@@ -364,7 +398,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     
     unique_chem_labels = np.unique(KS_df.evaluate('KS_groups'))
     N_unique_chem=len(unique_chem_labels)
-    
+
     chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem)
 
     chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in range(chem_cmap.N)],extend='max')
