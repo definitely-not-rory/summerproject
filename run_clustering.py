@@ -408,7 +408,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     unique_chem_labels = np.unique(KS_df.evaluate('KS_groups')) #Generates list of unique chemical groups.
     N_unique_chem=len(unique_chem_labels) #Calculates total number of unique chemical groups.
 
-    chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem) #Generates colour map with distinct inidividual colour for each chemical group.
+    chem_cmap=plt.get_cmap('gist_ncar') #Generates colour map with distinct inidividual colour for each chemical group.
 
     chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in np.linspace(0.0,0.9,N_unique_chem)],extend='max') #Maps and normalises colour map to unique KS group labels.
 
@@ -430,8 +430,10 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     unique_progenitors, count_unique_prog=np.unique(prog_df.evaluate('progenitor_id'),return_counts=True) #Calculates unique progenitors and number of stars per unique progenitors.
     
     sorted_prog_indexes=np.flip(np.argsort(count_unique_prog))
+    
     sorted_unique_progenitors=unique_progenitors[sorted_prog_indexes]
     sorted_count_unique_prog=count_unique_prog[sorted_prog_indexes]
+    
     N_unique_prog=len(sorted_unique_progenitors)
 
     progenitor_mapping={old: new+1 for new, old in enumerate(sorted_unique_progenitors)}
@@ -444,9 +446,9 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     sorted_prog_df=df.filter('progenitor_id!=-1').extract()
 
-    prog_cmap=plt.get_cmap('gist_ncar',N_unique_prog) #Generates colour map with distinct inidividual colour for each progenitor.
+    prog_cmap=plt.get_cmap('gist_ncar') #Generates colour map with distinct inidividual colour for each progenitor.
 
-    progenitor_cmap, progenitor_norm = colors.from_levels_and_colors(np.unique(sorted_prog_df.evaluate('progenitor_id')),[prog_cmap(i) for i in np.linspace(0.0,0.9,N_unique_chem)],extend='max') #Maps and normalises colour map to unique KS group labels.
+    progenitor_cmap, progenitor_norm = colors.from_levels_and_colors(np.unique(sorted_prog_df.evaluate('progenitor_id')),[prog_cmap(i) for i in np.linspace(0.0,0.9,N_unique_prog)],extend='max') #Maps and normalises colour map to unique KS group labels.
 
     with open(f'{results_dir}/plotting/prog_cmap.pkl','wb') as f: #Exports generated unique KS group colour map to external .pkl file.
         pickle.dump({'cmap':progenitor_cmap,'norm':progenitor_norm},f)

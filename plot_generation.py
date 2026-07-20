@@ -224,9 +224,6 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
             colour=chemistry_cmap(chemistry_norm(group))
 
-            #if np.sum(colour)>=3.5:
-                #colour=chemistry_cmap(chemistry_norm(group-7.5))
-            
             ax.axvline(x=min_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
             ax.axvline(x=max_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
             ax.axvspan(min_border,max_border,alpha=0.2,facecolor=colour,zorder=0)
