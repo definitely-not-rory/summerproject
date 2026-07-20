@@ -167,5 +167,3 @@ def small_num_KS(feh1,feh2,Nstars_lim=20,NMC=100):
             comp_percentage=same_distr
     
         return orig_pval,comp_percentage,less_percentage
-    
-    

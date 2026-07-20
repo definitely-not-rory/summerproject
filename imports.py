@@ -17,6 +17,7 @@ import seaborn as sns
 import itertools
 from tqdm import tqdm
 import alphashape
+import re
 
 from scipy.cluster.hierarchy import linkage
 from scipy.cluster.hierarchy import dendrogram

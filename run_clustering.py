@@ -2,6 +2,18 @@ from imports import *
 import aux_functions as calc
 import plot_generation as plot
 
+def show_load_data_commands(halo,lsr_def,vtoomre):
+
+    if vtoomre==False: 
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    req_data=['base_data.hdf5','potential.ini','sample.hdf5']
+    for data in req_data:
+        print(f'cp /cosma8/data/dp262/dc-dodd1/Auriga_SSs_clustering_Project/read_in_sims_scripts/auriga_halo_{int(re.match(r'(.*?)(\d+)$', halo).group(2))}_SN_catalogues/{halo}_{lsr_def}_{selection_type}_{data} /cosma/apps/durham/dc-coll7/auriga/{halo}/{lsr_def}/{selection_type}/{halo}_{lsr_def}_{selection_type}_{data}')
+
+
 #Function that generates the .yaml file to use Run_Script.py for a given clustering run
 def generate_yaml_file(filename, base_data, result_folder, potential, run_name, sample, 
                        path='yaml_files', 
@@ -391,8 +403,6 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     df['KS_groups']=np.array(KS_groups) #Stores KS groups in DataFrame
     
-    df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5') #Exports chemistry group data to separate external .hdf5 file.
-
     KS_df = df.filter('KS_groups!=-1').extract() #Generates subsample of all stars assigned to chemical groups.
     
     unique_chem_labels = np.unique(KS_df.evaluate('KS_groups')) #Generates list of unique chemical groups.
@@ -400,7 +410,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     chem_cmap=plt.get_cmap('gist_ncar',N_unique_chem) #Generates colour map with distinct inidividual colour for each chemical group.
 
-    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in range(chem_cmap.N)],extend='max') #Maps and normalises colour map to unique KS group labels.
+    chemistry_cmap, chemistry_norm = colors.from_levels_and_colors(unique_chem_labels,[chem_cmap(i) for i in np.linspace(0.0,0.9,N_unique_chem)],extend='max') #Maps and normalises colour map to unique KS group labels.
 
     with open(f'{results_dir}/plotting/chemistry_cmap.pkl','wb') as f: #Exports generated unique KS group colour map to external .pkl file.
         pickle.dump({'cmap':chemistry_cmap,'norm':chemistry_norm},f)
@@ -414,3 +424,50 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     if 'chem_dendrogram' in plots and plots['chem_dendrogram'] == True: #Plots chemically-grouped dendrogram if requested.
         plot.cluster_dendrogram(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir,distance_metric=distance_metric,dcut=dcut, show_chem=True)
+
+    prog_df=df.filter('progenitor_id!=-1').extract() #Generates subsample of all stars assigned to non-in-situ progenitors.
+    
+    unique_progenitors, count_unique_prog=np.unique(prog_df.evaluate('progenitor_id'),return_counts=True) #Calculates unique progenitors and number of stars per unique progenitors.
+    
+    sorted_prog_indexes=np.flip(np.argsort(count_unique_prog))
+    sorted_unique_progenitors=unique_progenitors[sorted_prog_indexes]
+    sorted_count_unique_prog=count_unique_prog[sorted_prog_indexes]
+    N_unique_prog=len(sorted_unique_progenitors)
+
+    progenitor_mapping={old: new+1 for new, old in enumerate(sorted_unique_progenitors)}
+    progenitor_mapping[-1]=-1
+    
+    relabelled_progenitors=np.array([progenitor_mapping[prog] for prog in df.evaluate('progenitor_id')])
+    
+    df['raw_progenitor_id']=df['progenitor_id']
+    df['progenitor_id']=relabelled_progenitors
+
+    sorted_prog_df=df.filter('progenitor_id!=-1').extract()
+
+    prog_cmap=plt.get_cmap('gist_ncar',N_unique_prog) #Generates colour map with distinct inidividual colour for each progenitor.
+
+    progenitor_cmap, progenitor_norm = colors.from_levels_and_colors(np.unique(sorted_prog_df.evaluate('progenitor_id')),[prog_cmap(i) for i in np.linspace(0.0,0.9,N_unique_chem)],extend='max') #Maps and normalises colour map to unique KS group labels.
+
+    with open(f'{results_dir}/plotting/prog_cmap.pkl','wb') as f: #Exports generated unique KS group colour map to external .pkl file.
+        pickle.dump({'cmap':progenitor_cmap,'norm':progenitor_norm},f)
+
+    cluster_mcps={-1:-1}
+
+    for cluster in range(len(sorted_unique_labels)):
+        progenitors_in_cluster=df['progenitor_id'].values[np.isin(df.evaluate('label'),cluster)]
+        mcp = stats.mode(np.array(progenitors_in_cluster), keepdims=True).mode[0]
+        cluster_mcps[cluster]=mcp
+
+    KS_mcps={-1:-1}
+
+    for KS_group in range(len(unique_chem_labels)):
+        progenitors_in_group=df['progenitor_id'].values[np.isin(df.evaluate('KS_groups'),KS_group)]
+        mcp = stats.mode(np.array(progenitors_in_group), keepdims=True).mode[0]
+        KS_mcps[KS_group]=mcp
+
+    df['cluster_mcp']=np.array([cluster_mcps[label] for label in df.evaluate('label')])
+    df['KS_mcp']=np.array([KS_mcps[group] for group in df.evaluate('KS_groups')])       
+
+    df.export(f'{results_dir}/{run_name}_ChemistryGroups.hdf5') #Exports chemistry group data to separate external .hdf5 file.
+
+    

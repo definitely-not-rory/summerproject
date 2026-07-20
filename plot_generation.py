@@ -1,63 +1,5 @@
 from imports import *
 
-def show_progenitors(df):
-    total_stars=df.count()
-    accreted_stars=df.count(selection='prog!=-2')
-    insitu_stars=df.count(selection='prog==-2')
-
-    print(f'Total Stars: {total_stars}\nAccreted: {accreted_stars}\nIn-Situ: {insitu_stars}')
-
-    progenitors=df.filter('prog!=-2').extract().evaluate('prog')
-
-    unique_progenitors=np.sort(np.unique(progenitors))
-    progenitor_labels=[str(progenitor) for progenitor in unique_progenitors]
-
-    stars_per_progenitor=[np.count_nonzero(progenitors==progenitor) for progenitor in unique_progenitors]
-
-    sorted_prog_counts=np.array(sorted([[progenitor,int(stars_per_progenitor[progenitor_labels.index(progenitor)])] for progenitor in progenitor_labels],key=lambda x:x[1],reverse=True))
-
-    plt.figure(figsize=(18,8))
-    plt.bar('In-Situ',insitu_stars,color='teal')
-    plt.bar(sorted_prog_counts[:,0],[int(count) for count in sorted_prog_counts[:,1]],color='dodgerblue')
-    plt.yscale('log')
-    plt.xlabel('Progenitor')
-    plt.ylabel('Count')
-    plt.xticks(rotation=-45)
-    plt.show()
-
-def iom_scatters(df,x,y):
-    dimensions={'En':[-150000,-60000],'Lz':[-4000,1000],'Fe_H':[-3,0.5]}
-
-    axes=[x,y]
-    cbar_dim=[dimension for dimension in dimensions if dimension not in axes][0]
-
-    df.filter('Fe_H>-3').extract().scatter(x,y,c='silver',s=1)
-    df.filter('(Fe_H>-3)&(prog!=-2)').extract().scatter(x,y,c=df.filter('(Fe_H>-3)&(prog!=-2)').extract().evaluate(cbar_dim),cmap='magma',s=1)
-
-    plt.colorbar(label=cbar_dim)
-    plt.clim(dimensions[cbar_dim][0],dimensions[cbar_dim][1])
-    plt.show()
-
-def stellar_FeH_hists(df, **kwargs):
-    if 'normalised' in kwargs:
-        normalised=kwargs['normalised']
-    else:
-        normalised=False
-    plt.hist(df.filter('(Fe_H>-3)').extract().evaluate('Fe_H'),label='all stars',histtype='step',bins=np.arange(-3,1,0.2),linestyle='dashed',color='midnightblue',density=normalised)
-    plt.hist(df.filter('(Fe_H>-3)&(prog==-2)').extract().evaluate('Fe_H'),label='in-situ',histtype='step',bins=np.arange(-3,1,0.2),color='teal',density=normalised)
-    plt.hist(df.filter('(Fe_H>-3)&(prog!=-2)').extract().evaluate('Fe_H'),label='accreted',histtype='step',bins=np.arange(-3,1,0.2),color='dodgerblue',density=normalised)
-
-
-    plt.xlabel('FeH')
-    if normalised==True:
-        plt.ylabel('Normalised N')
-    else:
-        plt.ylabel('N')
-        plt.yscale('log')
-    plt.legend()
-    plt.title('Halo stars')
-    plt.show()
-
 def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',cluster_by='raw'):
     
     lsr_defs=['8kpc','scalelength']
@@ -159,6 +101,33 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
 
             plt.tight_layout(w_pad=1)
 
+    elif cluster_by=='progenitor':
+        grouped_df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+        groups_only = grouped_df.filter('label>-1').extract()
+        
+        with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
+            cmap_data=pickle.load(f)
+
+        prog_cmap=cmap_data['cmap']
+        prog_norm=cmap_data['norm']
+
+        prog_cmap.set_under((0.0,0.4,0.3,0.25))
+
+        fig, ax = plt.subplots(2,3,figsize=[15,10])
+        plt.tight_layout()
+
+        for i in range(6):
+            plt.sca(ax[int(i/3),i%3])
+            
+            df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
+            groups_only.scatter(x_axes[i], y_axes[i], s=2, c=(groups_only.evaluate('cluster_mcp')),cmap=prog_cmap, norm=prog_norm,length_check=False)
+
+            plt.xlabel(xlabels[i])
+            plt.ylabel(ylabels[i])
+
+            plt.tight_layout(w_pad=1)
+
+
     plt.savefig(f'{save_path}/{cluster_by}.pdf')
     plt.savefig(f'{save_path}/{cluster_by}.png',dpi=250,bbox_inches='tight')
 
@@ -253,11 +222,11 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
             min_border=np.min([xbase[leaves.index(cluster)] for cluster in clusters_in_group])-3
             max_border=np.max([xbase[leaves.index(cluster)] for cluster in clusters_in_group])+3
 
-            if group==14:
-                colour='lightgrey'
-            else:
-                colour=chemistry_cmap(chemistry_norm(group))
+            colour=chemistry_cmap(chemistry_norm(group))
 
+            #if np.sum(colour)>=3.5:
+                #colour=chemistry_cmap(chemistry_norm(group-7.5))
+            
             ax.axvline(x=min_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
             ax.axvline(x=max_border,ls='dashed',alpha=0.5,color=colour,zorder=0)
             ax.axvspan(min_border,max_border,alpha=0.2,facecolor=colour,zorder=0)
@@ -351,7 +320,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             for test in KStests_data:
                 test_data=KStests_data[test]
                 for cluster in clusters_in_group:
-                    if cluster in test_data['labels1'] or group_label in test_data['labels2']:
+                    if cluster in test_data['labels1'] or cluster in test_data['labels2']:
                         if test not in req_tests:
                             req_tests.append(test)
         
@@ -363,10 +332,10 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             for test in KStests_data:
                 test_data=KStests_data[test]
                 for cluster in clusters_in_group:
-                    if cluster in test_data['labels1'] or group_label in test_data['labels2']:
+                    if cluster in test_data['labels1'] or cluster in test_data['labels2']:
                         if test not in req_tests:
                             req_tests.append(test)
-        
+
         elif grouping=='failed':
             req_tests=[]
 
@@ -510,7 +479,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.pdf')
             plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.png',dpi=250,bbox_inches='tight')    
 
-def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',show_clusters=True):
+def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',show_clusters=True,show_KS=False):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -533,10 +502,10 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
     save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/clusters/'
     
-    group_types=['cluster','group','KS_group']
+    group_types=['cluster','group','KS_group','progenitor']
 
     if group not in group_types:
-        print('Please select a valid group type:\n - cluster\n - group\n - KS_group')
+        print('Please select a valid group type:\n - cluster\n - group\n - KS_group\n - prog')
         return
     
     save_path+=group+'s'
@@ -544,6 +513,8 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
     if group!='cluster':
         if show_clusters==True:
             save_path+='/clusters'
+        elif group=='progenitor' and show_KS==True:
+            save_path+='/KS_groups'
         else:
             save_path+='/groups'
     
@@ -568,6 +539,13 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
     chemistry_cmap=cmap_data['cmap']
     chemistry_norm=cmap_data['norm']
+
+    with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    prog_cmap=cmap_data['cmap']
+    prog_norm=cmap_data['norm']
+
 
     if group=='cluster':
         unique_clusters=np.unique(df.evaluate('label'))[1:]
@@ -620,7 +598,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
                 selected_df.scatter(x_axes[i], y_axes[i], s=1,c=colour_list, alpha=0.4,length_check=False)
 
                 if int(i/3)<1:
-                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
                     ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=colour_list[0],linewidth=1.5,ls='dashed'))
 
                 plt.xlabel(xlabels[i])
@@ -642,7 +620,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
                 selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
                 
                 if int(i/3)<1:
-                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
                     ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=colour_list[0],linewidth=1.5,ls='dashed'))
 
                 plt.xlabel(xlabels[i])
@@ -672,7 +650,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
                 selected_df.scatter(x_axes[i], y_axes[i], s=2, c=selected_df.evaluate('KS_groups'),cmap=chemistry_cmap, norm=chemistry_norm, alpha=0.4,length_check=False)
 
                 if int(i/3)<1:
-                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
                     ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=chemistry_cmap(num),linewidth=1.5,ls='dashed'))
 
                 plt.xlabel(xlabels[i])
@@ -692,8 +670,82 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
                 selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
                 
                 if int(i/3)<1:
-                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=2)
+                    alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
                     ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=chemistry_cmap(num),linewidth=1.5,ls='dashed'))
+
+                plt.xlabel(xlabels[i])
+                plt.ylabel(ylabels[i])
+
+                plt.tight_layout(w_pad=1)
+
+    elif group=='progenitor':
+        prog_df=df.filter('progenitor_id!=-1').extract()
+
+        unique_progs=np.unique(prog_df.evaluate('progenitor_id'))
+
+
+        if num not in unique_progs:
+            print('Group number not available.')
+            return
+        
+        if show_clusters==False:
+            if show_KS==False:
+                selected_df=df.filter('progenitor_id==%s'%num).extract()
+
+                fig, ax = plt.subplots(2,3,figsize=[15,10])
+                plt.tight_layout()
+
+                for i in range(6):
+                    plt.sca(ax[int(i/3),i%3])
+                    
+                    df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
+                    selected_df.scatter(x_axes[i], y_axes[i], s=2, c=selected_df.evaluate('progenitor_id'),cmap=prog_cmap, norm=prog_norm, alpha=0.4,length_check=False)
+
+                    if int(i/3)<1:
+                        alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
+                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(num),linewidth=1.5,ls='dashed'))
+
+                    plt.xlabel(xlabels[i])
+                    plt.ylabel(ylabels[i])
+
+                    plt.tight_layout(w_pad=1)
+            else:
+                selected_df=df.filter('KS_mcp==%s'%num).extract()
+                prog_df=df.filter('progenitor_id==%s'%num).extract()
+
+                fig, ax = plt.subplots(2,3,figsize=[15,10])
+                plt.tight_layout()
+
+                for i in range(6):
+                    plt.sca(ax[int(i/3),i%3])
+                    
+                    df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
+                    selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('KS_groups'),cmap=chemistry_cmap, norm=chemistry_norm, alpha=0.4,length_check=False)
+                    
+                    if int(i/3)<1:
+                        alpha_shape = alphashape.alphashape(list(zip(prog_df.evaluate(x_axes[i]), prog_df.evaluate(y_axes[i]))), alpha=0.2)
+                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(num),linewidth=1.5,ls='dashed'))
+
+                    plt.xlabel(xlabels[i])
+                    plt.ylabel(ylabels[i])
+
+                    plt.tight_layout(w_pad=1)
+        else:
+            selected_df=df.filter('cluster_mcp==%s'%num).extract()
+            prog_df=df.filter('progenitor_id==%s'%num).extract()
+
+            fig, ax = plt.subplots(2,3,figsize=[15,10])
+            plt.tight_layout()
+
+            for i in range(6):
+                plt.sca(ax[int(i/3),i%3])
+                
+                df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
+                selected_df.scatter(x_axes[i], y_axes[i], s=1, c=selected_df.evaluate('label'),cmap=clusters_cmap, norm=clusters_norm, alpha=0.4,length_check=False)
+                
+                if int(i/3)<1:
+                    alpha_shape = alphashape.alphashape(list(zip(prog_df.evaluate(x_axes[i]), prog_df.evaluate(y_axes[i]))), alpha=0.2)
+                    ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(num),linewidth=1.5,ls='dashed'))
 
                 plt.xlabel(xlabels[i])
                 plt.ylabel(ylabels[i])
@@ -704,9 +756,9 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
     if show_clusters==True:
         filename+='_clusters'
+    elif show_KS==True:
+        filename+='_KSgroups'
 
     plt.savefig(f'{save_path}/{filename}.pdf')
     plt.savefig(f'{save_path}/{filename}.png',dpi=250,bbox_inches='tight')
-
-
 
