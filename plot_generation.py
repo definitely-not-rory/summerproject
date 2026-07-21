@@ -759,3 +759,347 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
     plt.savefig(f'{save_path}/{filename}.pdf')
     plt.savefig(f'{save_path}/{filename}.png',dpi=250,bbox_inches='tight')
 
+def prog_FeH_hist(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',show_only='all',normalised=True,N_cutoff=10):
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, please run clustering.cluster().')
+        return
+    else:
+        print(f'{halo} clustering data located.')
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/FeH_hists/progenitors'
+
+    os.makedirs(save_path, exist_ok=True)
+    os.makedirs(f'{save_path}/individual', exist_ok=True)
+    os.makedirs(f'{save_path}/comparison', exist_ok=True)
+
+    df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    prog_cmap=cmap_data['cmap']
+    prog_norm=cmap_data['norm']
+
+    if isinstance(show_only, str)!=True:
+        if isinstance(show_only, int)==True:
+            progenitors=[show_only]
+            
+            filename=f'/individual/prog_{show_only}'
+        else:
+            progenitors=show_only
+            
+            filename='/comparison/prog'
+            for prog in show_only:
+                filename+=f'_{prog}'
+
+    else:
+        all_progenitors,N_progenitor=np.unique(df.evaluate('progenitor_id'),return_counts=True)
+        progenitors=all_progenitors[N_progenitor>=N_cutoff]
+
+        filename='/all_progenitors'
+
+    if len(progenitors)>1:
+        alpha=0.5
+    else:
+        alpha=1  
+
+    plt.figure()
+    for progenitor in progenitors:
+        prog_df=df.filter('progenitor_id==%s'%progenitor)
+        plt.hist(prog_df.filter('feh>-3').extract().evaluate('feh'),label=int(progenitor),histtype='step',bins=np.arange(-3,1,0.1),color=prog_cmap(prog_norm(progenitor)),density=normalised,alpha=alpha)
+
+    plt.xlabel('FeH')
+    if normalised==True:
+        plt.ylabel('Normalised N')
+    else:
+        plt.ylabel('N')
+        plt.yscale('log')
+    plt.show()
+    
+    plt.savefig(f'{save_path}{filename}.pdf')
+    plt.savefig(f'{save_path}{filename}.png',dpi=250,bbox_inches='tight')
+
+    
+
+def group_FeH_hist(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',normalised=True):
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, please run clustering.cluster().')
+        return
+    else:
+        print(f'{halo} clustering data located.')
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/FeH_hists/'
+    
+    group_types=['cluster','group','KS_group']
+
+    if group not in group_types:
+        print('Please select a valid group type:\n - cluster\n - group\n - KS_group')
+        return
+    
+    save_path+=group+'s'
+    
+    os.makedirs(save_path,exist_ok=True)
+
+    df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    clusters_cmap=cmap_data['cmap']
+    clusters_norm=cmap_data['norm']
+
+    group_colours=df.evaluate('colours').to_pylist()
+
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    chemistry_cmap=cmap_data['cmap']
+    chemistry_norm=cmap_data['norm']
+
+    columns={'cluster':'label','group':'groups','KS_group':'KS_groups'}
+    cmaps={'cluster':{'cmap':clusters_cmap,'norm':clusters_norm},'group':group_colours,'KS_group':{'cmap':chemistry_cmap,'norm':chemistry_norm}}
+
+    group_df=df.filter('%s==%s'%(columns[group],num)).extract()
+
+    if isinstance(cmaps[group],dict)==True:
+        colour=cmaps[group]['cmap'](cmaps[group]['norm'](num))
+    else:
+        colour=cmaps[group][num]
+
+    plt.hist(group_df.filter('feh>-3').extract().evaluate('feh'),histtype='step',bins=np.arange(-3,1,0.1),color=colour,density=normalised)
+
+    plt.xlabel('FeH')
+    if normalised==True:
+        plt.ylabel('Normalised N')
+    else:
+        plt.ylabel('N')
+        plt.yscale('log')
+    plt.show()
+
+    plt.savefig(f'{save_path}/{group}_{num}.pdf')
+    plt.savefig(f'{save_path}/{group}_{num}.png',dpi=250,bbox_inches='tight')
+    
+def show_progenitors(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures'):
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, please run clustering.cluster().')
+        return
+    else:
+        print(f'{halo} clustering data located.')
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/progenitors/'
+
+    os.makedirs(save_path, exist_ok=True)
+
+    df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    prog_cmap=cmap_data['cmap']
+    prog_norm=cmap_data['norm']
+    
+    total_stars=df.count()
+    accreted_stars=df.count(selection='progenitor_id!=-1')
+    insitu_stars=df.count(selection='progenitor_id==-1')
+
+    progenitors=df.filter('progenitor_id!=-1').extract().evaluate('progenitor_id')
+
+    unique_progenitors=np.sort(np.unique(progenitors))
+    progenitor_labels=[str(progenitor) for progenitor in unique_progenitors]
+
+    stars_per_progenitor=[np.count_nonzero(progenitors==progenitor) for progenitor in unique_progenitors]
+
+    sorted_prog_counts=np.array(sorted([[progenitor,int(stars_per_progenitor[progenitor_labels.index(progenitor)])] for progenitor in progenitor_labels],key=lambda x:x[1],reverse=True))
+
+    plt.figure(figsize=(27,9))
+    plt.bar('In-Situ',insitu_stars,color='teal')
+    for prog in sorted_prog_counts:
+        plt.bar(prog[0],int(prog[1]),color=prog_cmap(prog_norm(int(prog[0]))))
+    plt.yscale('log')
+    plt.xlabel('Progenitor')
+    plt.ylabel('Count')
+    plt.xticks(rotation=-90)
+    plt.show()
+
+    plt.savefig(f'{save_path}counts.pdf')
+    plt.savefig(f'{save_path}counts.png',dpi=250,bbox_inches='tight')
+
+def dominance_diagram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group_by='cluster',N_bins=128,insitu_colour='silver'):
+    lsr_defs=['8kpc','scalelength']
+
+    if lsr_def not in lsr_defs:
+        print('\nInvalid LSR definition selected, please select \'8kpc\' or \'scalelength\'')
+        return
+
+    if vtoomre==False:
+        selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    if os.path.exists(f'{home_dir}{halo}/{lsr_def}/{selection_type}/results/')!=True:
+        print(f'No clustering data detected for {halo} in {home_dir}, please run clustering.cluster().')
+        return
+    else:
+        print(f'{halo} clustering data located.')
+
+    group_types=['cluster','group','KS_group','prog']
+
+    if group_by not in group_types:
+        print('Please select a valid group type:\n - cluster\n - group\n - KS_group\n - prog')
+        return
+
+    results_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}/results'
+    run_name=f'{halo}_{lsr_def}_{selection_type}'
+
+    save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/dominance/'
+
+    os.makedirs(save_path, exist_ok=True)
+
+    df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    clusters_cmap=cmap_data['cmap']
+    clusters_norm=cmap_data['norm']
+
+    group_colours=df.evaluate('colours').to_pylist()
+
+    with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    chemistry_cmap=cmap_data['cmap']
+    chemistry_norm=cmap_data['norm']
+
+    with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
+        cmap_data=pickle.load(f)
+
+    prog_cmap=cmap_data['cmap']
+    prog_norm=cmap_data['norm']
+
+    with open (f'{home_dir}/iom_scales/{run_name}_sample.json', 'r') as f: #Loads IOM scales from file for exporting.
+        scales = json.load(f)
+        f.close()
+    
+    columns={'cluster':'label','group':'groups','KS_group':'KS_groups','prog':'progenitor_id'}
+    cmaps={'cluster':{'cmap':clusters_cmap,'norm':clusters_norm},'group':group_colours,'KS_group':{'cmap':chemistry_cmap,'norm':chemistry_norm},'prog':{'cmap':prog_cmap,'norm':prog_norm}}
+
+    x_axes = ['Lz/10e2', 'Lz/10e2', 'Lperp/10e2']
+    y_axes = ['En/10e4', 'Lperp/10e2','En/10e4']
+
+    xlabels = ['$L_z$ [$10^3$ kpc km/s]', '$L_z$ [$10^3$ kpc km/s]', '$L_{\perp}$ [$10^3$ kpc km/s]']
+    ylabels = ['$E$ [$10^5$ km$^2$/s$^2$]', '$L_{\perp}$ [$10^3$ kpc km/s]','$E$ [$10^5$ km$^2$/s$^2$]']
+
+    xlims=[np.array(scales[iom.split('/')[0]])/(10**(int(iom.split('/')[1].split('e')[1])+1)) for iom in x_axes]
+    ylims=[np.array(scales[iom.split('/')[0]])/(10**(int(iom.split('/')[1].split('e')[1])+1)) for iom in y_axes]
+
+    xbins=[np.linspace(xlims[i][0],xlims[i][1],N_bins) for i in range(3)]
+    ybins=[np.linspace(ylims[i][0],ylims[i][1],N_bins) for i in range(3)]
+
+    groups=np.unique(df.evaluate('%s'%columns[group_by]))
+    
+    N_total=np.zeros((3,N_bins-1,N_bins-1))
+    
+    for i in range(3):
+        x_data=df.evaluate(x_axes[i])
+        y_data=df.evaluate(y_axes[i])
+
+        N_total[i-1],_,_=np.histogram2d(x_data,y_data,bins=[xbins[i],ybins[i]])
+
+    N_total[(N_total==0.0)]=1.0
+
+    fig, ax = plt.subplots(1,3,figsize=[15,5])
+    plt.tight_layout()
+
+    for group in groups:
+        if isinstance(cmaps[group_by],dict)!=True:
+            if group==-1:
+                group_colour=insitu_colour
+            else:
+                group_colour=cmaps[group_by][int(group)]
+        else:
+            group_cmap=cmaps[group_by]['cmap']
+            group_norm=cmaps[group_by]['norm']
+
+            group_cmap.set_under(insitu_colour)
+
+            group_colour=group_cmap(group_norm(group))
+        
+        group_df=df.filter('%s==%s'%(columns[group_by],group)).extract()
+        
+        for i in range(3):
+            plt.sca(ax[i])
+            x_data=group_df.evaluate(x_axes[i])
+            y_data=group_df.evaluate(y_axes[i])
+
+            
+            N,_,_=np.histogram2d(x_data,y_data,bins=[xbins[i],ybins[i]])
+            X, Y = np.meshgrid(xbins[i]+0.5*(xbins[i][1]-xbins[i][0]), ybins[i]+0.5*(ybins[i][1]-ybins[i][0]))
+            
+            alpha=N*1.0/N_total[i-1]
+            
+            N[(N==0)]=np.nan
+            N[(N>0)]=1.0
+            
+            alpha_bias=0.3
+            alpha=1.0*alpha.T*(np.log10(N_total[i-1].T)+alpha_bias)/np.max(np.log10(N_total[i-1].T)+alpha_bias)
+            
+            alpha[(alpha>=0.0)]+=0.15
+            alpha[(alpha>=1.0)]=1.0
+            
+            ax[i].pcolormesh(X,Y,N.T,cmap=colors.ListedColormap(group_colour),alpha=alpha,rasterized=True)
+
+    for i in range(3):
+        plt.sca(ax[i])
+        plt.xlabel(xlabels[i])
+        plt.ylabel(ylabels[i])
+
+    plt.tight_layout(w_pad=1)
+
+    plt.savefig(f'{save_path}{group_by}s.pdf')
+    plt.savefig(f'{save_path}{group_by}s.png',dpi=250,bbox_inches='tight')
+              
+        
+
