@@ -27,7 +27,8 @@ def generate_yaml_file(filename, base_data, result_folder, potential, run_name, 
                        min_members=10,
                        N_process=4,
                        min_sig=3,
-                       dendo_cut=3.2):
+                       dendo_cut=3.2,
+                       vlsr=235):
     
     if path!='yaml_files': #Locate alternative .yaml save location if specified, if not specified, default to a local 'yaml_files' directory.
         if os.path.isdir(path)!=True: #Verify alternative path exists.
@@ -108,7 +109,9 @@ def generate_yaml_file(filename, base_data, result_folder, potential, run_name, 
                 
                 'cluster':{'min_sig':min_sig},
 
-                'group':{'dendo_cut':dendo_cut}
+                'group':{'dendo_cut':dendo_cut},
+
+                'solar':{'vlsr':vlsr}
     }
 
     step_labels=['art','linkage','sig','clusters','gaussian_fits','labelled_sample'] #User input and yaml_data[data] labels used to select which steps to skip.
@@ -203,12 +206,14 @@ def cluster(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-co
  
         os.replace(f'{run_dir}{run_data[file]}_updated.hdf5', f'{run_dir}{run_data[file]}.hdf5') #Overwrites original .hdf5 with updated version and removes temporary file.
 
-    generate_yaml_file(run_name,run_data['base_data'],'results',run_data['potential'],run_name,run_data['sample'],data_path=run_dir,save_path=run_dir,vtoomre=vtoomre,find_iom_scales=iom_scaling,**yaml_params) #Generates .yaml file for selected dataset using provided directory paths, whether or not to regenerate the IOM scales, and ncludes any additional requested parameters within the YAML file
+    vlsr=calc.get_v_LSR(halo,lsr_def=lsr_def,vtoomre=vtoomre,home_dir=home_dir)
+
+    generate_yaml_file(run_name,run_data['base_data'],'results',run_data['potential'],run_name,run_data['sample'],data_path=run_dir,save_path=run_dir,vtoomre=vtoomre,find_iom_scales=iom_scaling,vlsr=vlsr,**yaml_params) #Generates .yaml file for selected dataset using provided directory paths, whether or not to regenerate the IOM scales, and ncludes any additional requested parameters within the YAML file
  
     kc_main(f'yaml_files/{run_name}.yaml') #Runs clustering algorithm for requested dataset using selected .yaml file.
 
 #Function that groups individual clusters from clustering algorithm by both Mahalanobis distance, and chemistry via 2 sample KS tests.
-def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,regen_dist_matrix=False,p_threshold=0.05):
+def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',distance_metric='mahalanobis',plots={},dcut=3.2,regen_dist_matrix=False,p_threshold=0.05,N_cutoff=20):
 
     lsr_defs=['8kpc','scalelength'] #Labels of permitted definitions of Local Solar Neighbourhood ('8kpc' -> proper radial distance from galactic centre, 'scalelength' -> distance that scales based on properties of individual halo).
 
@@ -252,9 +257,9 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     unique_labels= np.unique(sig_df.evaluate('label')) #Retrieves all unique significant cluster labels.
     N_unique=len(unique_labels) #Total number of significant clusters.
 
-    cmap=plt.get_cmap('gist_ncar',N_unique) #Generates colour map with distinct inidividual colour for each cluster.
+    cmap=plt.get_cmap('gist_ncar') #Generates colour map with distinct inidividual colour for each cluster.
 
-    clusters_cmap, clusters_norm = colors.from_levels_and_colors(unique_labels,[cmap(i) for i in range(cmap.N)],extend='max') #Maps and normalises colour map to unique cluster labels.
+    clusters_cmap, clusters_norm = colors.from_levels_and_colors(unique_labels,[cmap(i) for i in np.linspace(0.0,0.9,N_unique)],extend='max') #Maps and normalises colour map to unique cluster labels.
 
     os.makedirs(f'{results_dir}/plotting',exist_ok=True) #Creates sub-directory for data files associated with plotting (exported colour maps etc.).
 
@@ -428,7 +433,7 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     prog_df=df.filter('progenitor_id!=-1').extract() #Generates subsample of all stars assigned to non-in-situ progenitors.
     
     unique_progenitors, count_unique_prog=np.unique(prog_df.evaluate('progenitor_id'),return_counts=True) #Calculates unique progenitors and number of stars per unique progenitors.
-    
+
     sorted_prog_indexes=np.flip(np.argsort(count_unique_prog))
     
     sorted_unique_progenitors=unique_progenitors[sorted_prog_indexes]
@@ -446,9 +451,16 @@ def chemistry_grouping(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
 
     sorted_prog_df=df.filter('progenitor_id!=-1').extract()
 
+    threshold_progs=np.unique(sorted_prog_df.evaluate('progenitor_id'))[np.where(sorted_count_unique_prog>=N_cutoff)]
+    N_threshold_progs=len(threshold_progs)
+    threshold_progs=np.append(threshold_progs,N_threshold_progs+1)
+
     prog_cmap=plt.get_cmap('gist_ncar') #Generates colour map with distinct inidividual colour for each progenitor.
 
-    progenitor_cmap, progenitor_norm = colors.from_levels_and_colors(np.unique(sorted_prog_df.evaluate('progenitor_id')),[prog_cmap(i) for i in np.linspace(0.0,0.9,N_unique_prog)],extend='max') #Maps and normalises colour map to unique KS group labels.
+    progenitor_cmap, progenitor_norm = colors.from_levels_and_colors(threshold_progs,[prog_cmap(i) for i in np.linspace(0.0,0.9,N_threshold_progs+1)],extend='max') #Maps and normalises colour map to unique KS group labels.
+
+    progenitor_cmap.set_under('silver')
+    progenitor_cmap.set_over('paleturquoise')
 
     with open(f'{results_dir}/plotting/prog_cmap.pkl','wb') as f: #Exports generated unique KS group colour map to external .pkl file.
         pickle.dump({'cmap':progenitor_cmap,'norm':progenitor_norm},f)

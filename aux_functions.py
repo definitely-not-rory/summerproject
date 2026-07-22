@@ -167,3 +167,33 @@ def small_num_KS(feh1,feh2,Nstars_lim=20,NMC=100):
             comp_percentage=same_distr
     
         return orig_pval,comp_percentage,less_percentage
+
+def get_v_LSR(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/'):
+    if vtoomre==False: #Allocates relevant label to particle subselection method ('accreted' -> particles tagged as accreted by AURIGA, 'vtoomre' -> selection over all particles using Toomre velocity threshold).
+            selection_type='accreted'
+    else:
+        selection_type='vtoomre'
+
+    run_name=f'{halo}_{lsr_def}_{selection_type}' #Initialises quick access strings for clustering run label and file paths.
+    data_dir=f'{home_dir}{halo}/{lsr_def}/{selection_type}'
+
+    potential=agama.Potential(f'{data_dir}/{run_name}_potential.ini')
+
+    with open(f'{home_dir}/halo_scale_radii.json','r') as f:
+        scale_radii=json.load(f)
+        f.close()
+
+    scale_radius=scale_radii[str(re.match(r'(.*?)(\d+)$', halo).group(2))]
+
+    if lsr_def=='8kpc':
+        radius=8.0
+    else:
+        radius=3*scale_radius
+    
+    v_circ=int(np.round(np.sqrt(-radius*np.asarray(potential.force(np.array([radius,0.0,0.0])))[0])))
+
+    return(v_circ)
+
+    
+
+    

@@ -2,7 +2,7 @@ from imports import *
 import aux_functions as calc
 import plot_generation as plot
 
-def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/'):
+def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',N_cutoff=20):
 
     lsr_defs=['8kpc','scalelength'] #Labels of permitted definitions of Local Solar Neighbourhood ('8kpc' -> proper radial distance from galactic centre, 'scalelength' -> distance that scales based on properties of individual halo).
 
@@ -30,7 +30,8 @@ def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/
 
     progenitors=df.filter('progenitor_id!=-1').extract().evaluate('progenitor_id')
 
-    unique_progenitors=np.unique(progenitors)
+    unique_progenitors,N_progenitor=np.unique(progenitors,return_counts=True)
+    threshold_progenitors=unique_progenitors[np.where(N_progenitor>=20)]
  
     dominant_predicted_clusters=[]
     dominant_predicted_KS_groups=[]
@@ -38,7 +39,7 @@ def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/
     cluster_completenesses=[]
     KS_group_completenesses=[]
 
-    for progenitor in unique_progenitors:
+    for progenitor in threshold_progenitors:
         progenitor_df=df.filter('progenitor_id==%s'%progenitor).extract()
         N_total_prog_stars=progenitor_df.count()
 
@@ -87,7 +88,7 @@ def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/
     cluster_recovered_progs=[]
     KS_recovered_progs=[]
 
-    for index,progenitor in enumerate(unique_progenitors):
+    for index,progenitor in enumerate(threshold_progenitors):
         dominant_predicted_cluster=dominant_predicted_clusters[index]
         dominant_predicted_KS_group=dominant_predicted_KS_groups[index]
 
@@ -103,10 +104,10 @@ def progenitor_recovery(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/
         if KS_purity>=2/3 and KS_completeness>=0.5:
             KS_recovered_progs.append(progenitor)
 
-    cluster_recovery_rate=len(cluster_recovered_progs)/len(unique_progenitors)
-    KS_recovery_rate=len(KS_recovered_progs)/len(unique_progenitors)
+    cluster_recovery_rate=len(cluster_recovered_progs)/len(threshold_progenitors)
+    KS_recovery_rate=len(KS_recovered_progs)/len(threshold_progenitors)
 
-    data={'cluster_completeness':cluster_completenesses,'KS_completeness':KS_group_completenesses,'cluster_purity':cluster_purities,'KS_purity':KS_group_purities,'cluster_realness':cluster_realness,'KS_realness':KS_realness,'cluster_recover':cluster_recovery_rate,'KS_recovery':KS_recovery_rate}
+    data={'cluster_completeness':cluster_completenesses,'KS_completeness':KS_group_completenesses,'cluster_purity':cluster_purities,'KS_purity':KS_group_purities,'cluster_realness':cluster_realness,'KS_realness':KS_realness,'cluster_recovery':cluster_recovery_rate,'KS_recovery':KS_recovery_rate}
     return data
 
         

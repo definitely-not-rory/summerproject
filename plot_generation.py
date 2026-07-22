@@ -1,6 +1,6 @@
 from imports import *
 
-def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',cluster_by='raw'):
+def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',cluster_by='raw',flip_Lz=False,mcps='cluster'):
     
     lsr_defs=['8kpc','scalelength']
 
@@ -33,9 +33,15 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     ylabels = ['$E$ [$10^5$ km$^2$/s$^2$]', '$L_{\perp}$ [$10^3$ kpc km/s]','$E$ [$10^5$ km$^2$/s$^2$]', '$v_{y}$ [km/s]', '$v_z$ [km/s]', '$v_{y}$ [km/s]']
 
     df=vaex.open(f'{results_dir}/{run_name}_LabelledSample.hdf5')
+
+    if flip_Lz==True:
+        df['Lz']=df.evaluate('Lz')*-1
     
     if cluster_by=='raw':
         clusters_df=vaex.open(f'{results_dir}/{run_name}_SignificantSample.hdf5')
+
+        if flip_Lz==True:
+            clusters_df['Lz']=clusters_df.evaluate('Lz')*-1
 
         with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
             cmap_data=pickle.load(f)
@@ -59,6 +65,10 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     
     elif cluster_by=='groups':
         grouped_df=vaex.open(f'{results_dir}/{run_name}_GroupedSample.hdf5')
+
+        if flip_Lz==True:
+            grouped_df['Lz']=grouped_df.evaluate('Lz')*-1
+
         groups_only = grouped_df.filter('label>-1').extract()
         
         colour_list=groups_only.evaluate('colours').to_pylist()
@@ -79,6 +89,10 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     
     elif cluster_by=='chemistry':
         grouped_df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+        if flip_Lz==True:
+            grouped_df['Lz']=grouped_df.evaluate('Lz')*-1
+
         groups_only = grouped_df.filter('KS_groups>-1').extract()
 
         with open(f'{results_dir}/plotting/chemistry_cmap.pkl','rb') as f:
@@ -103,6 +117,10 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
 
     elif cluster_by=='progenitor':
         grouped_df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+        if flip_Lz==True:
+            grouped_df['Lz']=grouped_df.evaluate('Lz')*-1
+
         groups_only = grouped_df.filter('label>-1').extract()
         
         with open(f'{results_dir}/plotting/prog_cmap.pkl','rb') as f:
@@ -111,7 +129,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
         prog_cmap=cmap_data['cmap']
         prog_norm=cmap_data['norm']
 
-        prog_cmap.set_under((0.0,0.4,0.3,0.25))
+        prog_cmap.set_under('slategrey')
 
         fig, ax = plt.subplots(2,3,figsize=[15,10])
         plt.tight_layout()
@@ -120,7 +138,7 @@ def clusters(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             plt.sca(ax[int(i/3),i%3])
             
             df.scatter(x_axes[i], y_axes[i], s=0.5, c='silver',alpha=0.7, length_limit=6000000)
-            groups_only.scatter(x_axes[i], y_axes[i], s=2, c=(groups_only.evaluate('cluster_mcp')),cmap=prog_cmap, norm=prog_norm,length_check=False)
+            groups_only.scatter(x_axes[i], y_axes[i], s=2, c=(groups_only.evaluate(f'{mcps}_mcp')),cmap=prog_cmap, norm=prog_norm,length_check=False,alpha=0.7)
 
             plt.xlabel(xlabels[i])
             plt.ylabel(ylabels[i])
@@ -246,7 +264,7 @@ def cluster_dendrogram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     plt.savefig(f'{save_path}/{filename}.pdf')
     plt.savefig(f'{save_path}/{filename}.png',dpi=250,bbox_inches='tight')
 
-def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis',p_threshold=0.05):
+def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',selection=None,distance_metric='mahalanobis',p_threshold=0.05,flip_Lz=False):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -271,6 +289,9 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
     os.makedirs(save_path,exist_ok=True)
 
     df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    if flip_Lz==True:
+        df['Lz']=df.evaluate('Lz')*-1
 
     with open (f'{results_dir}/{run_name}_KSTests.json', 'r') as f:
         KStests_data = json.load(f)
@@ -365,7 +386,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             mcp2 = stats.mode(np.array(cluster2_data['prog']), keepdims=True).mode[0]
             
             fraction1 = np.sum(np.array(cluster1_data['prog']) == mcp1)/len(cluster1_data['prog'])
-            fraction2 = np.sum(np.array(cluster2_data['prog']) == cluster2_data['prog']) / len(cluster2_data['prog'])
+            fraction2 = np.sum(np.array(cluster2_data['prog']) == mcp2) / len(cluster2_data['prog'])
             
             cluster1_data['colour'] = clusters_cmap(clusters_norm(cluster1)) if cluster1 <= max_original_clusters else 'b'
             cluster2_data['colour'] = clusters_cmap(clusters_norm(cluster2)) if cluster2 <= max_original_clusters else 'r'
@@ -432,7 +453,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             mcp2 = stats.mode(np.array(cluster2_data['prog']), keepdims=True).mode[0]
             
             fraction1 = np.sum(np.array(cluster1_data['prog']) == mcp1)/len(cluster1_data['prog'])
-            fraction2 = np.sum(np.array(cluster2_data['prog']) == cluster2_data['prog']) / len(cluster2_data['prog'])
+            fraction2 = np.sum(np.array(cluster2_data['prog']) == mcp2) / len(cluster2_data['prog'])
             
             cluster1_data['colour'] = clusters_cmap(clusters_norm(cluster1)) if cluster1 <= max_original_clusters else 'b'
             cluster2_data['colour'] = clusters_cmap(clusters_norm(cluster2)) if cluster2 <= max_original_clusters else 'r'
@@ -476,7 +497,7 @@ def KS_tests(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-c
             plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.pdf')
             plt.savefig(f'{save_path}/{test}_clusters_{cluster1}_{cluster2}.png',dpi=250,bbox_inches='tight')    
 
-def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',show_clusters=True,show_KS=False):
+def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',show_clusters=True,show_KS=False,flip_Lz=False):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -499,7 +520,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
     save_path=f'{save_dir}/{halo}/{lsr_def}/{selection_type}/clusters/'
     
-    group_types=['cluster','group','KS_group','progenitor']
+    group_types=['cluster','group','KS_group','prog']
 
     if group not in group_types:
         print('Please select a valid group type:\n - cluster\n - group\n - KS_group\n - prog')
@@ -524,6 +545,9 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
     ylabels = ['$E$ [$10^5$ km$^2$/s$^2$]', '$L_{\perp}$ [$10^3$ kpc km/s]','$E$ [$10^5$ km$^2$/s$^2$]', '$v_{y}$ [km/s]', '$v_z$ [km/s]', '$v_{y}$ [km/s]']
 
     df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    if flip_Lz==True:
+        df['Lz']=df.evaluate('Lz')*-1
 
     with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
         cmap_data=pickle.load(f)
@@ -675,7 +699,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
                 plt.tight_layout(w_pad=1)
 
-    elif group=='progenitor':
+    elif group=='prog':
         prog_df=df.filter('progenitor_id!=-1').extract()
 
         unique_progs=np.unique(prog_df.evaluate('progenitor_id'))
@@ -700,7 +724,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
 
                     if int(i/3)<1:
                         alpha_shape = alphashape.alphashape(list(zip(selected_df.evaluate(x_axes[i]), selected_df.evaluate(y_axes[i]))), alpha=0.2)
-                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(num),linewidth=1.5,ls='dashed'))
+                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(prog_norm(num)),linewidth=1.5,ls='dashed'))
 
                     plt.xlabel(xlabels[i])
                     plt.ylabel(ylabels[i])
@@ -721,7 +745,7 @@ def cluster_only(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
                     
                     if int(i/3)<1:
                         alpha_shape = alphashape.alphashape(list(zip(prog_df.evaluate(x_axes[i]), prog_df.evaluate(y_axes[i]))), alpha=0.2)
-                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(num),linewidth=1.5,ls='dashed'))
+                        ax[int(i/3),i%3].add_patch(plt.Polygon(list(alpha_shape.exterior.coords),fill=False,edgecolor=prog_cmap(prog_norm(num)),linewidth=1.5,ls='dashed'))
 
                     plt.xlabel(xlabels[i])
                     plt.ylabel(ylabels[i])
@@ -813,14 +837,17 @@ def prog_FeH_hist(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham
         filename='/all_progenitors'
 
     if len(progenitors)>1:
-        alpha=0.5
+        threshold_progenitor=np.unique([prog_norm(progenitor) for progenitor in progenitors])[-1]
+        alphas=np.ones_like(progenitors)*0.4
+        for i in range(threshold_progenitor):
+            alphas[i]+=0.3
     else:
         alpha=1  
 
     plt.figure()
     for progenitor in progenitors:
         prog_df=df.filter('progenitor_id==%s'%progenitor)
-        plt.hist(prog_df.filter('feh>-3').extract().evaluate('feh'),label=int(progenitor),histtype='step',bins=np.arange(-3,1,0.1),color=prog_cmap(prog_norm(progenitor)),density=normalised,alpha=alpha)
+        plt.hist(prog_df.filter('feh>-3').extract().evaluate('feh'),label=int(progenitor),histtype='step',bins=np.arange(-3,1,0.1),color=prog_cmap(prog_norm(progenitor)),density=normalised,alpha=alphas[int(progenitor-1)])
 
     plt.xlabel('FeH')
     if normalised==True:
@@ -828,12 +855,9 @@ def prog_FeH_hist(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham
     else:
         plt.ylabel('N')
         plt.yscale('log')
-    plt.show()
     
     plt.savefig(f'{save_path}{filename}.pdf')
     plt.savefig(f'{save_path}{filename}.png',dpi=250,bbox_inches='tight')
-
-    
 
 def group_FeH_hist(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group='cluster',normalised=True):
     lsr_defs=['8kpc','scalelength']
@@ -902,7 +926,6 @@ def group_FeH_hist(halo,num,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/d
     else:
         plt.ylabel('N')
         plt.yscale('log')
-    plt.show()
 
     plt.savefig(f'{save_path}/{group}_{num}.pdf')
     plt.savefig(f'{save_path}/{group}_{num}.png',dpi=250,bbox_inches='tight')
@@ -954,19 +977,19 @@ def show_progenitors(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/dur
     sorted_prog_counts=np.array(sorted([[progenitor,int(stars_per_progenitor[progenitor_labels.index(progenitor)])] for progenitor in progenitor_labels],key=lambda x:x[1],reverse=True))
 
     plt.figure(figsize=(27,9))
-    plt.bar('In-Situ',insitu_stars,color='teal')
+    plt.bar('In-Situ',insitu_stars,color='silver')
     for prog in sorted_prog_counts:
         plt.bar(prog[0],int(prog[1]),color=prog_cmap(prog_norm(int(prog[0]))))
     plt.yscale('log')
     plt.xlabel('Progenitor')
     plt.ylabel('Count')
     plt.xticks(rotation=-90)
-    plt.show()
+    plt.gca().axhline(20,c='red',linestyle='dashed')
 
     plt.savefig(f'{save_path}counts.pdf')
     plt.savefig(f'{save_path}counts.png',dpi=250,bbox_inches='tight')
 
-def dominance_diagram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group_by='cluster',N_bins=128,insitu_colour='silver'):
+def dominance_diagram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/durham/dc-coll7/auriga/',save_dir='figures',group_by='cluster',N_bins=128,insitu_colour='silver',exclude=[],flip_Lz=False):
     lsr_defs=['8kpc','scalelength']
 
     if lsr_def not in lsr_defs:
@@ -998,6 +1021,9 @@ def dominance_diagram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/du
     os.makedirs(save_path, exist_ok=True)
 
     df=vaex.open(f'{results_dir}/{run_name}_ChemistryGroups.hdf5')
+
+    if flip_Lz==True:
+        df['Lz']=df.evaluate('Lz')*-1
 
     with open(f'{results_dir}/plotting/clusters_cmap.pkl','rb') as f:
         cmap_data=pickle.load(f)
@@ -1038,7 +1064,8 @@ def dominance_diagram(halo,lsr_def='8kpc',vtoomre=False,home_dir='/cosma/apps/du
     xbins=[np.linspace(xlims[i][0],xlims[i][1],N_bins) for i in range(3)]
     ybins=[np.linspace(ylims[i][0],ylims[i][1],N_bins) for i in range(3)]
 
-    groups=np.unique(df.evaluate('%s'%columns[group_by]))
+    all_groups=np.unique(df.evaluate('%s'%columns[group_by]))
+    groups=[group for group in all_groups if group not in exclude]
     
     N_total=np.zeros((3,N_bins-1,N_bins-1))
     
